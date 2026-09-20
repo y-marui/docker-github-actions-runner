@@ -36,6 +36,10 @@ fi
 
 if [ ! -f "${DATA_DIR}/.runner" ]; then
   : "${REPO_URL:?REPO_URL is required}"
+  if [[ ! "$REPO_URL" =~ ^https://[^/]+/[^/]+/[^/]+$ ]]; then
+    echo "error: REPO_URL must look like https://github.com/OWNER/REPO (got: ${REPO_URL})" >&2
+    exit 1
+  fi
   : "${RUNNER_TOKEN:?RUNNER_TOKEN (registration token) is required on first start}"
   args=(--unattended --url "$REPO_URL" --token "$RUNNER_TOKEN" --name "${RUNNER_NAME:-$(hostname)}" --replace)
   [ -n "${RUNNER_LABELS:-}" ] && args+=(--labels "$RUNNER_LABELS")
