@@ -1,0 +1,15 @@
+# .gitleaks.toml
+# Extends gitleaks default rules; see
+# https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+
+title = "docker-github-actions-runner gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  '''.gitleaks.toml''',
+  '''\.pre-commit-config\.yaml''',
+]

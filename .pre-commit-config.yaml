@@ -1,0 +1,37 @@
+repos:
+  # ----------------------------------------------------------------
+  # Security (required — verified by global git hook)
+  # ----------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        args: ["--config=.gitleaks.toml"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Required: SSH private key detection
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-executables-have-shebangs
+
+  # Required: .env file check (hook id contains "detect-dotenv")
+  - repo: local
+    hooks:
+      - id: detect-dotenv
+        name: Block .env files
+        language: fail
+        entry: '.env ファイルはコミット禁止。ダミー値のみの .env.example を使うこと。'
+        files: '(^|/)\.env(\.[^.]+)?$'
+        exclude: '(^|/)\.env\.(example|sample|template)$'
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
