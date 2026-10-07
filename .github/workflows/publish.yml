@@ -1,10 +1,8 @@
-name: publish
+name: Publish
 
 on:
   push:
     branches: [main]
-    paths: [Dockerfile, entrypoint.sh, .github/workflows/publish.yml]
-  pull_request:
     paths: [Dockerfile, entrypoint.sh, .github/workflows/publish.yml]
   schedule:
     # Weekly rebuild to pick up Ubuntu / apt security updates.
@@ -32,18 +30,16 @@ jobs:
         run: echo "runner=$(sed -n 's/^ARG RUNNER_VERSION=//p' Dockerfile)" >> "$GITHUB_OUTPUT"
 
       - uses: docker/login-action@v4
-        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Pull requests only verify that the image builds (amd64, not pushed).
       - uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          push: ${{ github.event_name != 'pull_request' }}
+          platforms: linux/amd64,linux/arm64
+          push: true
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ steps.ver.outputs.runner }}

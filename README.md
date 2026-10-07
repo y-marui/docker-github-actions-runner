@@ -1,5 +1,14 @@
 # docker-github-actions-runner
 
+> **This is the reference (English) version.**
+> The canonical (Japanese) version is [README-jp.md](README-jp.md).
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/y-marui/docker-github-actions-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/y-marui/docker-github-actions-runner/actions/workflows/ci.yml)
+[![Charter Check](https://github.com/y-marui/docker-github-actions-runner/actions/workflows/dev-charter-check.yml/badge.svg)](https://github.com/y-marui/docker-github-actions-runner/actions/workflows/dev-charter-check.yml)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/y-marui?style=social)](https://github.com/sponsors/y-marui)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-donate-yellow.svg)](https://www.buymeacoffee.com/y.marui)
+
 Linux self-hosted GitHub Actions runner as a Docker image, plus the script that registers it.
 The image is published to GHCR for linux/amd64 and linux/arm64 (Raspberry Pi), so a new host
 only needs Docker and `gh`; nothing is built locally.
@@ -93,3 +102,6 @@ The first push creates the package as private. Set it to public once under
 ## License
 
 [MIT](LICENSE)
+
+---
+*This document has a Japanese canonical version [README-jp.md](README-jp.md). Update both in the same commit when editing.*

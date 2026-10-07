@@ -1,0 +1,42 @@
+name: Dev Charter
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check
+    if: github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    uses: y-marui/dev-charter/.github/workflows/check-charter.yml@main
+    with:
+      # Set the repository variable LINUX_RUNNER only in PRIVATE repositories (see CI_POLICY Runner Billing).
+      runner: ${{ vars.LINUX_RUNNER && !github.event.pull_request.head.repo.fork && vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+
+  gate:
+    name: Dev Charter
+    needs: [check]
+    # Skip on draft PRs too (a draft can't be merged, so no status is awaited).
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ${{ vars.LINUX_RUNNER && !github.event.pull_request.head.repo.fork && vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - name: Verify dev-charter check did not fail
+        run: |
+          result="${{ needs.check.result }}"
+          if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+            echo "::error::dev-charter check did not succeed (got: $result)"
+            exit 1
+          fi
+          echo "check result: $result (skipped is fine — draft or dependabot)"
