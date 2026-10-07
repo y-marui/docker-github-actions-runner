@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main, update-charter]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# This repository is public, so jobs always run on GitHub-hosted runners
+# (never set LINUX_RUNNER here; see CI_POLICY Runner Billing).
+jobs:
+  changes:
+    name: Detect changes
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      image: ${{ steps.filter.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            image:
+              - 'Dockerfile'
+              - 'entrypoint.sh'
+              - 'setup.sh'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/publish.yml'
+
+  security:
+    name: Security scan (pre-commit)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1
+
+  build:
+    name: Build
+    needs: [changes]
+    if: needs.changes.outputs.image == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build the image (linux/amd64, not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  gate:
+    name: CI
+    needs: [changes, security, build]
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required jobs succeeded
+        run: |
+          if [ "${{ needs.security.result }}" != "success" ]; then
+            echo "::error::security did not succeed (got: ${{ needs.security.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.changes.outputs.image }}" != "true" ]; then
+            echo "no image change; nothing further to verify"
+            exit 0
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::build did not succeed (got: ${{ needs.build.result }})"
+            exit 1
+          fi
