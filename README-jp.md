@@ -62,6 +62,7 @@ bash setup.sh install OWNER/REPO
 ~~~
 
 `docker rm -f` は使わない。先に停止して、実行中のジョブを終わらせる。登録状態は volume にあるので、コンテナを作り直しても新しいトークンは要らない。
+作り直した直後の数分間は、GitHub 側で古いセッションが失効するまで "A session for this runner already exists" と出続けることがあるが、自動で再接続する。
 
 ## Removing a runner
 
