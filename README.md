@@ -73,6 +73,8 @@ bash setup.sh install OWNER/REPO
 
 Do not use `docker rm -f`: stop the container first so the runner can finish its job. The
 registration lives in the volume, so a re-created container does not need a new token.
+The runner may log "A session for this runner already exists" for a couple of minutes while GitHub
+expires the old session; it then reconnects on its own.
 
 ## Removing a runner
 
