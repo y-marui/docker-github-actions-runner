@@ -15,7 +15,7 @@ Linux の self-hosted GitHub Actions runner を Docker イメージとして提�
 ghcr.io/y-marui/actions-runner:latest
 ~~~
 
-イメージは Ubuntu 24.04 に runner、`git`、`gh`、`curl`、`jq`、`zip`、python(`pip`、`uv`)、node、`shellcheck`、`gitleaks`、`swiftlint`、Qt テストが読み込む共有ライブラリを加えたもの。秘密情報は含まず、登録トークンは実行時に渡す。Docker ソケットはマウントせず、runner ユーザーは sudo を使えない。
+イメージは Ubuntu 24.04 に runner、`git`、`gh`、`curl`、`jq`、`zip`、python(`pip`、`uv`)、node、`shellcheck`、`gitleaks`、`swiftlint`、Qt テストが読み込む共有ライブラリを加えたもの。秘密情報は含まず、登録トークンは実行時に渡す。Docker ソケットはマウントせず、runner ユーザーは sudo を使えない。ジョブ内でイメージをビルドするための rootless `podman` を含む。
 
 ## Runners per OS
 
@@ -51,6 +51,23 @@ runner はリポジトリ単位で登録する(個人アカウントにはアカ
 | `RUNNER_HOST` | `hostname -s` | runner 名の接頭辞 |
 | `RUNNER_IMAGE` | `ghcr.io/y-marui/actions-runner:latest` | 使用するイメージ |
 | `RUNNER_CPUS` / `RUNNER_MEMORY` | 未設定 | コンテナごとの上限(例: `2` / `4g`) |
+| `RUNNER_PODMAN` | `0` | `1` にすると、ジョブ内でイメージをビルドできる(下記)。ラベル `linux-podman` も付く |
+
+## Building images in jobs (rootless podman)
+
+イメージには rootless の `podman` が入っており、ジョブは Docker ソケットなしで `Dockerfile` を `podman build` し、結果を `podman run` できる。これにはユーザー名前空間とマウントが要り、Docker 既定の capability と seccomp・AppArmor のプロファイルが妨げるため、runner ごとに明示的に有効にする。
+
+~~~sh
+RUNNER_PODMAN=1 bash setup.sh install OWNER/REPO
+~~~
+
+このコンテナは `--device /dev/fuse`、`--cap-add SYS_ADMIN`、`seccomp=unconfined` / `apparmor=unconfined` で起動し(`--privileged` ではなく、ソケットなしは変わらない)、ラベル `linux-podman` が加わる。オプションなしで入れた runner は変わらない。ワークフローは `runs-on: [self-hosted, linux-sh, linux-podman]` で選ぶ。イメージの保存先はその runner 専用の volume で、レイヤーはジョブ間でキャッシュされる。
+
+~~~sh
+podman build -t app:ci .
+podman run -d --name app app:ci
+podman healthcheck run app   # Dockerfile の HEALTHCHECK と `podman build --format docker` が必要
+~~~
 
 ## Updating the image on a host
 

@@ -33,6 +33,7 @@ jobs:
             image:
               - 'Dockerfile'
               - 'entrypoint.sh'
+              - 'podman/**'
               - 'setup.sh'
               - '.github/workflows/ci.yml'
               - '.github/workflows/publish.yml'

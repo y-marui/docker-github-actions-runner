@@ -20,7 +20,7 @@ ghcr.io/y-marui/actions-runner:latest
 The image is Ubuntu 24.04 with the runner, `git`, `gh`, `curl`, `jq`, `zip`, python (`pip`, `uv`),
 node, `shellcheck`, `gitleaks`, `swiftlint`, and the shared libraries Qt tests load. It contains
 no secrets: the registration token is passed at run time. It does not mount the Docker socket,
-and the runner user has no sudo.
+and the runner user has no sudo. Rootless `podman` is included for building images in jobs.
 
 ## Runners per OS
 
@@ -61,6 +61,29 @@ Environment variables for `setup.sh`:
 | `RUNNER_HOST` | `hostname -s` | prefix of the runner name |
 | `RUNNER_IMAGE` | `ghcr.io/y-marui/actions-runner:latest` | image to run |
 | `RUNNER_CPUS` / `RUNNER_MEMORY` | unset | per-container limits, e.g. `2` / `4g` |
+| `RUNNER_PODMAN` | `0` | `1` enables building images in jobs (see below) and adds the label `linux-podman` |
+
+## Building images in jobs (rootless podman)
+
+The image contains rootless `podman`, so a job can `podman build` a `Dockerfile` and
+`podman run` the result without a Docker socket. This needs user namespaces and mounts, which
+Docker's default capabilities, seccomp and AppArmor profiles block, so it is opt-in per runner:
+
+~~~sh
+RUNNER_PODMAN=1 bash setup.sh install OWNER/REPO
+~~~
+
+That container is started with `--device /dev/fuse`, `--cap-add SYS_ADMIN` and
+`seccomp=unconfined`/`apparmor=unconfined` (not `--privileged`, and still without the socket) and gets the extra label `linux-podman`; runners
+installed without the option are unchanged. Select it with
+`runs-on: [self-hosted, linux-sh, linux-podman]`. Image storage lives in the runner's own
+volume, so layers are cached across jobs.
+
+~~~sh
+podman build -t app:ci .
+podman run -d --name app app:ci
+podman healthcheck run app   # needs HEALTHCHECK in the Dockerfile and `podman build --format docker`
+~~~
 
 ## Updating the image on a host
 
