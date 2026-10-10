@@ -67,14 +67,14 @@ Environment variables for `setup.sh`:
 
 The image contains rootless `podman`, so a job can `podman build` a `Dockerfile` and
 `podman run` the result without a Docker socket. This needs user namespaces and mounts, which
-Docker's default seccomp and AppArmor profiles block, so it is opt-in per runner:
+Docker's default capabilities, seccomp and AppArmor profiles block, so it is opt-in per runner:
 
 ~~~sh
 RUNNER_PODMAN=1 bash setup.sh install OWNER/REPO
 ~~~
 
-That container is started with `--device /dev/fuse` and `seccomp=unconfined`/`apparmor=unconfined`
-(still unprivileged and without the socket) and gets the extra label `linux-podman`; runners
+That container is started with `--device /dev/fuse`, `--cap-add SYS_ADMIN` and
+`seccomp=unconfined`/`apparmor=unconfined` (not `--privileged`, and still without the socket) and gets the extra label `linux-podman`; runners
 installed without the option are unchanged. Select it with
 `runs-on: [self-hosted, linux-sh, linux-podman]`. Image storage lives in the runner's own
 volume, so layers are cached across jobs.

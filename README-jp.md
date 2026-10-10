@@ -55,13 +55,13 @@ runner はリポジトリ単位で登録する(個人アカウントにはアカ
 
 ## Building images in jobs (rootless podman)
 
-イメージには rootless の `podman` が入っており、ジョブは Docker ソケットなしで `Dockerfile` を `podman build` し、結果を `podman run` できる。これにはユーザー名前空間とマウントが要り、Docker 既定の seccomp と AppArmor のプロファイルが妨げるため、runner ごとに明示的に有効にする。
+イメージには rootless の `podman` が入っており、ジョブは Docker ソケットなしで `Dockerfile` を `podman build` し、結果を `podman run` できる。これにはユーザー名前空間とマウントが要り、Docker 既定の capability と seccomp・AppArmor のプロファイルが妨げるため、runner ごとに明示的に有効にする。
 
 ~~~sh
 RUNNER_PODMAN=1 bash setup.sh install OWNER/REPO
 ~~~
 
-このコンテナは `--device /dev/fuse` と `seccomp=unconfined` / `apparmor=unconfined` で起動し(特権なし、ソケットなしは変わらない)、ラベル `linux-podman` が加わる。オプションなしで入れた runner は変わらない。ワークフローは `runs-on: [self-hosted, linux-sh, linux-podman]` で選ぶ。イメージの保存先はその runner 専用の volume で、レイヤーはジョブ間でキャッシュされる。
+このコンテナは `--device /dev/fuse`、`--cap-add SYS_ADMIN`、`seccomp=unconfined` / `apparmor=unconfined` で起動し(`--privileged` ではなく、ソケットなしは変わらない)、ラベル `linux-podman` が加わる。オプションなしで入れた runner は変わらない。ワークフローは `runs-on: [self-hosted, linux-sh, linux-podman]` で選ぶ。イメージの保存先はその runner 専用の volume で、レイヤーはジョブ間でキャッシュされる。
 
 ~~~sh
 podman build -t app:ci .
