@@ -37,6 +37,12 @@ RUN apt-get update \
  && apt-get update && apt-get install -y --no-install-recommends gh \
  && rm -rf /var/lib/apt/lists/*
 
+# Rootless podman builds and runs images without a Docker socket. It only works when the
+# container is started with the extra options of `RUNNER_PODMAN=1 setup.sh install`.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends podman uidmap fuse-overlayfs \
+ && rm -rf /var/lib/apt/lists/*
+
 # uv, gitleaks
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh \
  && case "${TARGETARCH}" in amd64) GL=x64;; arm64) GL=arm64;; *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1;; esac \
@@ -60,8 +66,11 @@ RUN case "${TARGETARCH}" in amd64) RA=x64;; arm64) RA=arm64;; esac \
 
 # Non-root user without sudo.
 RUN useradd -m -d /runner -s /bin/bash runner \
- && mkdir -p /runner/actions-runner /runner/.cache \
+ && echo "runner:100000:65536" > /etc/subuid \
+ && echo "runner:100000:65536" > /etc/subgid \
+ && mkdir -p /runner/actions-runner /runner/.cache /runner/.config/containers \
  && chown -R runner:runner /runner
+COPY --chown=runner:runner podman/containers.conf podman/storage.conf /runner/.config/containers/
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 755 /usr/local/bin/entrypoint.sh

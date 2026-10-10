@@ -3,7 +3,7 @@ name: Publish
 on:
   push:
     branches: [main]
-    paths: [Dockerfile, entrypoint.sh, .github/workflows/publish.yml]
+    paths: [Dockerfile, entrypoint.sh, "podman/**", .github/workflows/publish.yml]
   schedule:
     # Weekly rebuild to pick up Ubuntu / apt security updates.
     - cron: "0 3 * * 1"

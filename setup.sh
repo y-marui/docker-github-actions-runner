@@ -14,6 +14,8 @@
 #   RUNNER_HOST    runner 名の接頭辞（既定: hostname -s）
 #   RUNNER_IMAGE   イメージ名（既定: ghcr.io/y-marui/actions-runner:latest）
 #   RUNNER_CPUS / RUNNER_MEMORY   コンテナごとの上限（任意。例: 2 / 4g）
+#   RUNNER_PODMAN  1 にすると、rootless podman（docker ソケットなしのイメージビルド）を使えるように
+#                  CAP_SYS_ADMIN を足し seccomp/AppArmor を緩めて起動し、ラベル linux-podman も付ける（既定: 0）
 #
 # install は、イメージがホストに無ければ docker run が GHCR から自動で pull する。更新するには
 # pull してからコンテナを入れ替える（docker stop -t 30 → docker rm → install。docker rm -f は使わない）。
@@ -77,7 +79,7 @@ cmd_build() {
 }
 
 cmd_install() {
-  local repo name cname reg args
+  local repo name cname reg args labels
   for repo in "$@"; do
     echo "== ${repo}"
     [[ "${repo}" == */* ]] || die "OWNER/REPO の形式で指定してください: ${repo}"
@@ -90,12 +92,19 @@ cmd_install() {
       continue
     fi
 
+    labels="${RUNNER_LABEL}"
+    [[ "${RUNNER_PODMAN:-0}" == "1" ]] && labels="${labels},linux-podman"
     args=(docker run -d --name "${cname}" --restart unless-stopped
       -e "REPO_URL=https://github.com/${repo}"
       -e "RUNNER_NAME=${name}"
-      -e "RUNNER_LABELS=${RUNNER_LABEL}"
+      -e "RUNNER_LABELS=${labels}"
       -v "${cname}:/runner/actions-runner"
       -v "${CACHE_VOLUME}:/runner/.cache")
+    if [[ "${RUNNER_PODMAN:-0}" == "1" ]]; then
+      # rootless podman needs user namespaces, mounts and pivot_root, which Docker's default
+      # capabilities and seccomp/AppArmor profiles block. Only runners installed with this option get the looser profile.
+      args+=(--device /dev/fuse --cap-add SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined)
+    fi
     [[ -n "${RUNNER_CPUS:-}" ]] && args+=(--cpus "${RUNNER_CPUS}")
     [[ -n "${RUNNER_MEMORY:-}" ]] && args+=(--memory "${RUNNER_MEMORY}")
 
@@ -106,7 +115,7 @@ cmd_install() {
     fi
     reg="$(ghc api -X POST "repos/${repo}/actions/runners/registration-token" --jq .token)"
     "${args[@]}" -e "REG_TOKEN=${reg}" "${RUNNER_IMAGE}" >/dev/null
-    log "登録しました: ${name}（label ${RUNNER_LABEL}）"
+    log "登録しました: ${name}（label ${labels}）"
   done
 }
 
