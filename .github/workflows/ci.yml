@@ -68,9 +68,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  test:
+    name: Shell tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run runner-ctl tests
+        run: bash tests/runner-ctl-test.sh
+
   gate:
     name: CI
-    needs: [changes, security, build]
+    needs: [changes, security, test, build]
     if: always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -79,6 +89,10 @@ jobs:
         run: |
           if [ "${{ needs.security.result }}" != "success" ]; then
             echo "::error::security did not succeed (got: ${{ needs.security.result }})"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "::error::test did not succeed (got: ${{ needs.test.result }})"
             exit 1
           fi
           if [ "${{ needs.changes.outputs.image }}" != "true" ]; then
