@@ -103,6 +103,59 @@ new image deletes that copy and keeps the registration.
 The runner may log "A session for this runner already exists" for a couple of minutes while GitHub
 expires the old session; it then reconnects on its own.
 
+## Idle stop and on-demand start (secondary hosts)
+
+Optional. When one always-on host and smaller hosts (such as Raspberry Pis) register the same
+repositories, GitHub gives a job to any idle runner with the label, so the small hosts take jobs
+at random and every container keeps a listener running. `runner-ctl.sh` keeps the small hosts
+quiet. Run it on the secondary hosts only; the primary host keeps its runners up.
+
+- **Stop**: a running `ar-*` container with no job for `RUNNER_CTL_IDLE_MINUTES` is stopped with
+  `docker stop -t 30`. Containers are never removed; the registration stays in the volume.
+- **Start**: a stopped container is started when a job for its repository that this host can run
+  (labels `self-hosted`, `linux`, the architecture, `RUNNER_LABEL`) has been queued for at least
+  `RUNNER_CTL_START_DELAY` seconds, up to `RUNNER_CTL_MAX_RUNNING` running containers.
+- **Priority**: give each host a different `RUNNER_CTL_START_DELAY` (for example 60 and 120
+  seconds). The primary host takes a job at once; the host with the shorter delay is the next
+  choice; the other starts a runner only if nobody took the job.
+
+It touches only the `ar-*` containers of the repositories you list, and checks the queue with
+conditional requests (a `304` does not count against the rate limit).
+
+~~~sh
+sudo apt-get install -y jq curl                  # docker is already there
+mkdir -p ~/.config/runner-ctl
+cp systemd/runner-ctl.env.example ~/.config/runner-ctl/env     # edit the paths and numbers
+printf '%s\n' OWNER/REPO ... > ~/.config/runner-ctl/repos     # the repositories of this host
+install -m 600 /dev/null ~/.config/runner-ctl/token            # then paste the token into it
+bash runner-ctl.sh status
+bash runner-ctl.sh tick --dry-run                              # prints what it would do
+~~~
+
+The token is a fine-grained personal access token with read-only *Actions* permission on those
+repositories. Keep it, the repository list and the env file outside any repository. To run it every
+minute, copy `systemd/runner-ctl.service` and `systemd/runner-ctl.timer` to `~/.config/systemd/user/`,
+fix the path in the service, then:
+
+~~~sh
+systemctl --user daemon-reload && systemctl --user enable --now runner-ctl.timer
+loginctl enable-linger "$USER"                    # keep the timer running without a login
+~~~
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RUNNER_CTL_REPOS_FILE` / `RUNNER_CTL_REPOS` | required | repositories (`OWNER/REPO`), one per line in the file, or space-separated |
+| `RUNNER_CTL_TOKEN_FILE` | required | file with the token (mode 600) |
+| `RUNNER_CTL_IDLE_MINUTES` | `15` | stop a runner after this many idle minutes |
+| `RUNNER_CTL_START_DELAY` | `60` | start a runner for a job queued at least this many seconds |
+| `RUNNER_CTL_MAX_RUNNING` | `4` | upper bound on running containers |
+| `RUNNER_CTL_STATE_DIR` | `~/.local/state/runner-ctl` | state and API cache |
+| `RUNNER_LABEL` | `linux-sh` | the label of this host's runners (as for `setup.sh`) |
+
+A stopped runner is offline, so a job waits for it. Right after a start, GitHub may still hold the
+old session of the runner, so a job can wait up to about three minutes (see "A session for this
+runner already exists" above).
+
 ## Removing a runner
 
 ~~~sh

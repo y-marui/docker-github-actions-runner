@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `runner-ctl.sh` for secondary hosts: stops runner containers that have been idle and starts
+  stopped ones when a job has been queued, with a per-host start delay as priority and a cap on
+  running containers. systemd units and a settings example are in `systemd/`.
 - Rootless `podman` in the image, and `RUNNER_PODMAN=1 setup.sh install` to run a runner that can
   build and start images without a Docker socket (label `linux-podman`).
 - The Linux runner image is published to GHCR (`ghcr.io/y-marui/actions-runner`, linux/amd64
