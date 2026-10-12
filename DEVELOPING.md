@@ -22,8 +22,11 @@ CI builds the image for linux/amd64 on pull requests that touch the image. The m
 
 - `entrypoint.sh` runs inside the container as the non-root `runner` user. It must not need
   sudo, and the image must not mount the Docker socket.
-- Registration state lives in the volume mounted at `/runner/actions-runner`; the token is
-  needed only for the first start and is never written to a file.
+- The runner runs from `/opt/runner` in the image. Registration state and work files live in the
+  volume mounted at `/runner/actions-runner` and are linked into `/opt/runner` by the entrypoint
+  (only existing files: the runner crashes on a dangling link). Do not copy the runner into the
+  volume again (~450 MB per runner). The registration token is needed only for the first start
+  and is never written to a file.
 - `setup.sh` refuses public repositories. Keep that check.
 - No comments that restate what the code does; comments explain non-obvious *why* only (see
   [docs/dev-charter/CODE_STYLE.md](docs/dev-charter/CODE_STYLE.md)).

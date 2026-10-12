@@ -51,6 +51,8 @@ bash setup.sh status OWNER/REPO...
 
 Runners are registered per repository (a personal account has no account-level runners). Each
 container is named `ar-<repo>` and keeps its registration in the Docker volume `ar-<repo>`.
+The volume holds only the registration and the job workspace; the runner itself is the one in the
+image, so 24 runners on a host do not need 24 copies of it (~450 MB each).
 Workflows select the runner with `runs-on: [self-hosted, linux-sh]`.
 
 Environment variables for `setup.sh`:
@@ -96,6 +98,8 @@ bash setup.sh install OWNER/REPO
 
 Do not use `docker rm -f`: stop the container first so the runner can finish its job. The
 registration lives in the volume, so a re-created container does not need a new token.
+A volume made before the runner was shared still holds a full copy of it; the first start with the
+new image deletes that copy and keeps the registration.
 The runner may log "A session for this runner already exists" for a couple of minutes while GitHub
 expires the old session; it then reconnects on its own.
 
@@ -119,7 +123,8 @@ The first push creates the package as private. Set it to public once under
 ## Versions
 
 - `RUNNER_VERSION` in the `Dockerfile` pins the runner. The runner also updates itself at run
-  time, so a stale pin is harmless; bump it now and then.
+  time, so a stale pin is harmless; bump it now and then. A self-update is written to the container
+  layer (~450 MB per container), which re-creating the container with a fresh image discards.
 - Dependabot (`.github/dependabot.yml`) updates the Docker base image and the GitHub Actions
   used by the workflow. `SWIFTLINT_VERSION`, `GITLEAKS_VERSION` and `RUNNER_VERSION` are plain
   build arguments and are bumped by hand.

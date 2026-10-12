@@ -56,14 +56,6 @@ COPY --from=swiftlint /usr/lib/*.so /usr/local/lib/swiftlint/
 RUN echo /usr/local/lib/swiftlint > /etc/ld.so.conf.d/swiftlint.conf && ldconfig
 ENV LINUX_SOURCEKIT_LIB_PATH=/usr/local/lib/swiftlint
 
-# Runner binaries live in the image (/opt/runner); the entrypoint copies them into the
-# volume-backed runner directory so registration state survives container re-creation.
-RUN case "${TARGETARCH}" in amd64) RA=x64;; arm64) RA=arm64;; esac \
- && mkdir -p /opt/runner \
- && curl -fsSL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RA}-${RUNNER_VERSION}.tar.gz" \
-      | tar -xz -C /opt/runner \
- && echo "${RUNNER_VERSION}" > /opt/runner/.image-version
-
 # Non-root user without sudo.
 RUN useradd -m -d /runner -s /bin/bash runner \
  && echo "runner:100000:65536" > /etc/subuid \
@@ -72,9 +64,19 @@ RUN useradd -m -d /runner -s /bin/bash runner \
  && chown -R runner:runner /runner
 COPY --chown=runner:runner podman/containers.conf podman/storage.conf /runner/.config/containers/
 
+# The runner lives in the image (/opt/runner) and is used in place: the volume mounted at
+# /runner/actions-runner holds only the registration and work files, which the entrypoint
+# links into /opt/runner. A per-volume copy of the binaries costs ~450 MB per runner. chown runs
+# in the same layer as the extraction so the image does not carry the files twice.
+RUN case "${TARGETARCH}" in amd64) RA=x64;; arm64) RA=arm64;; esac \
+ && mkdir -p /opt/runner \
+ && curl -fsSL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${RA}-${RUNNER_VERSION}.tar.gz" \
+      | tar -xz -C /opt/runner \
+ && chown -R runner:runner /opt/runner
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 755 /usr/local/bin/entrypoint.sh
 
 USER runner
-WORKDIR /runner/actions-runner
+WORKDIR /opt/runner
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

@@ -17,5 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The runner binaries are no longer copied into every volume. Each volume holds only the
+  registration and work files (tens of KB), and a volume made earlier is slimmed down on its first
+  start. A host with 24 runners no longer needs ~11 GB for them. The working directory of the
+  image is now `/opt/runner`.
 - `setup.sh uninstall` stops the container gracefully (`docker stop -t 30`) instead of
   `docker rm -f`.
