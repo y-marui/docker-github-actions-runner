@@ -6,6 +6,7 @@
 pre-commit run --all-files                      # ShellCheck, gitleaks, charter checks
 docker build -t actions-runner:dev .            # image builds (linux/amd64 on an amd64 host)
 bash setup.sh install --dry-run OWNER/REPO      # show what install would do, without running it
+bash tests/runner-ctl-test.sh                   # runner-ctl.sh decisions, with fake docker/curl (needs jq)
 ~~~
 
 CI builds the image for linux/amd64 on pull requests that touch the image. The multi-arch

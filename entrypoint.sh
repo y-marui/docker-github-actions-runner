@@ -70,5 +70,15 @@ if [[ ! -f "${RUNNER_DIR}/.runner" ]]; then
   link_state
 fi
 
-# exec so SIGTERM from `docker stop` reaches the listener. No deregistration on stop.
-exec ./run.sh
+# run.sh does not pass SIGTERM on to the listener, so `docker stop` would wait for its timeout and
+# then SIGKILL it, leaving the runner's session on GitHub (the next start waits for it to expire).
+# Run it as a child and signal the listener directly. No deregistration on stop.
+./run.sh &
+run_pid=$!
+trap 'pkill -TERM -f "${RUNNER_HOME}/bin/Runner.Listener" || true' TERM INT
+status=0
+while kill -0 "${run_pid}" 2>/dev/null; do
+  status=0
+  wait "${run_pid}" || status=$?
+done
+exit "${status}"

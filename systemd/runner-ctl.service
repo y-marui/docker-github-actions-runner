@@ -1,0 +1,8 @@
+[Unit]
+Description=Stop idle runner containers and start them when a job is waiting
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+# Edit the path to where runner-ctl.sh lives. Settings are read from ~/.config/runner-ctl/env.
+ExecStart=%h/docker-github-actions-runner/runner-ctl.sh tick

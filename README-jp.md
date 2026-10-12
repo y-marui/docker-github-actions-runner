@@ -80,7 +80,46 @@ bash setup.sh install OWNER/REPO
 
 `docker rm -f` は使わない。先に停止して、実行中のジョブを終わらせる。登録状態は volume にあるので、コンテナを作り直しても新しいトークンは要らない。
 runner 本体の共有前に作った volume には本体の完全なコピーが残っている。新しいイメージで最初に起動したとき、そのコピーは削除され、登録情報は残る。
-作り直した直後の数分間は、GitHub 側で古いセッションが失効するまで "A session for this runner already exists" と出続けることがあるが、自動で再接続する。
+通常の停止（`docker stop`）では runner が自分でセッションを閉じるので、新しいコンテナは数秒でオンラインになる。クラッシュや強制終了の後は、GitHub 側で古いセッションが失効するまでの数分間、"A session for this runner already exists" と出続けることがあるが、自動で再接続する。
+
+## Idle stop and on-demand start (secondary hosts)
+
+任意。常時稼働の主ホストと、小さな副ホスト（Raspberry Pi など）が同じリポジトリを登録していると、GitHub は同じラベルの空いている runner のどれかにジョブを渡す。そのため副ホストにもジョブがランダムに流れ、どのコンテナもリスナーを常時動かしてしまう。`runner-ctl.sh` は副ホストを静かに保つ。**副ホストだけ**で動かし、主ホストでは動かさない（runner は常時起動のまま）。
+
+- **停止**: `RUNNER_CTL_IDLE_MINUTES` の間ジョブのない `ar-*` コンテナを `docker stop -t 30` で止める。コンテナは削除しない（登録は volume に残る）。
+- **起動**: 停止中のコンテナは、そのリポジトリでこのホストが実行できるジョブ（ラベルが `self-hosted`・`linux`・アーキテクチャ・`RUNNER_LABEL` に収まるもの）が `RUNNER_CTL_START_DELAY` 秒以上キューに残ったときに起動する。動かすコンテナは `RUNNER_CTL_MAX_RUNNING` 個まで。
+- **優先順位**: ホストごとに `RUNNER_CTL_START_DELAY` を変える（例: 60 秒と 120 秒）。ジョブは主ホストがすぐ取り、次に遅延の短い副ホスト、誰も取らなかったときだけ他の副ホストが起動する。
+
+対象は、指定したリポジトリの `ar-*` コンテナだけ。キューの確認は条件付きリクエストで行う（`304` はレート制限に数えられない）。
+
+~~~sh
+sudo apt-get install -y jq curl                  # docker は入っている前提
+mkdir -p ~/.config/runner-ctl
+cp systemd/runner-ctl.env.example ~/.config/runner-ctl/env     # パスと数値を編集する
+printf '%s\n' OWNER/REPO ... > ~/.config/runner-ctl/repos     # このホストのリポジトリ
+install -m 600 /dev/null ~/.config/runner-ctl/token            # 作ったファイルにトークンを貼る
+bash runner-ctl.sh status
+bash runner-ctl.sh tick --dry-run                              # 何をするかだけ表示する
+~~~
+
+トークンは、対象のリポジトリに *Actions* の読み取り権限だけを付けた fine-grained personal access token。トークン、リポジトリ一覧、env ファイルはリポジトリの外に置く。1 分ごとに動かすには、`systemd/runner-ctl.service` と `systemd/runner-ctl.timer` を `~/.config/systemd/user/` にコピーし、service のパスを直してから次を実行する。
+
+~~~sh
+systemctl --user daemon-reload && systemctl --user enable --now runner-ctl.timer
+loginctl enable-linger "$USER"                    # ログインしなくてもタイマーを動かし続ける
+~~~
+
+| 変数 | 既定値 | 意味 |
+|---|---|---|
+| `RUNNER_CTL_REPOS_FILE` / `RUNNER_CTL_REPOS` | 必須 | リポジトリ（`OWNER/REPO`）。ファイルは 1 行に 1 つ、変数は空白区切り |
+| `RUNNER_CTL_TOKEN_FILE` | 必須 | トークンのファイル（権限 600） |
+| `RUNNER_CTL_IDLE_MINUTES` | `15` | アイドルがこの分数続いたら止める |
+| `RUNNER_CTL_START_DELAY` | `60` | この秒数以上キューに残ったジョブのときに起動する |
+| `RUNNER_CTL_MAX_RUNNING` | `4` | 同時に動かすコンテナの上限 |
+| `RUNNER_CTL_STATE_DIR` | `~/.local/state/runner-ctl` | 状態と API のキャッシュ |
+| `RUNNER_LABEL` | `linux-sh` | このホストの runner のラベル（`setup.sh` と同じ） |
+
+停止中の runner はオフラインなので、ジョブはその起動を待つ。通常の停止の後なら、起動から数秒でオンラインに戻る（クラッシュや強制終了の場合は、上の "A session for this runner already exists" を参照）。
 
 ## Removing a runner
 
