@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Register (first start only) and run a GitHub Actions runner for one repository.
 # The runner binaries live in the image (/opt/runner) and are used in place. Registration and
-# work files live in the volume mounted at RUNNER_DIR and are linked into /opt/runner, so restarts
-# and container re-creation reuse the registration. REG_TOKEN is only needed for the first start.
+# work files live in the volume mounted at RUNNER_DIR, so restarts and container re-creation reuse
+# the registration. REG_TOKEN is only needed for the first start.
 #
 # Environment:
 #   REPO_URL       https://github.com/OWNER/REPO (required)
@@ -30,11 +30,11 @@ for f in bin externals config.sh env.sh run.sh run-helper.sh run-helper.cmd.temp
   rm -rf "${RUNNER_DIR:?}/${f}"
 done
 
-# Link the registration and work files into the runner directory. Only files that exist are
-# linked: the runner fails on a dangling link, and writes real files while registering. A real
-# file the runner wrote (or replaced a link with) is moved to the volume first.
+# Link the registration files into the runner directory. Only files that exist are linked: the
+# runner fails on a dangling link, and writes real files while registering. A real file the
+# runner wrote (or replaced a link with) is moved to the volume first.
 link_state() {
-  local f d
+  local f
   for f in .runner .credentials .credentials_rsaparams .env .path; do
     if [[ -f "${RUNNER_HOME}/${f}" && ! -L "${RUNNER_HOME}/${f}" ]]; then
       mv -f "${RUNNER_HOME}/${f}" "${RUNNER_DIR}/${f}"
@@ -45,11 +45,19 @@ link_state() {
       rm -f "${RUNNER_HOME}/${f}"
     fi
   done
-  for d in _work _diag; do
-    mkdir -p "${RUNNER_DIR}/${d}"
-    ln -sfn "${RUNNER_DIR}/${d}" "${RUNNER_HOME}/${d}"
-  done
+  mkdir -p "${RUNNER_DIR}/_diag"
+  ln -sfn "${RUNNER_DIR}/_diag" "${RUNNER_HOME}/_diag"
 }
+
+# The work folder must be the real path on the volume, not a link into it: actions/checkout
+# stores git credentials under includeIf "gitdir:<workspace>/.git", and git matches that against
+# the resolved path, so a workspace reached through a symlink gets no credentials.
+WORK_DIR="${RUNNER_DIR}/_work"
+mkdir -p "${WORK_DIR}"
+rm -f "${RUNNER_HOME}/_work"
+if [[ -f "${RUNNER_DIR}/.runner" ]]; then
+  sed -i "s#\"workFolder\": *\"[^\"]*\"#\"workFolder\": \"${WORK_DIR}\"#" "${RUNNER_DIR}/.runner"
+fi
 
 cd "${RUNNER_HOME}"
 link_state
@@ -58,7 +66,7 @@ if [[ ! -f "${RUNNER_DIR}/.runner" ]]; then
   : "${REG_TOKEN:?REG_TOKEN is required for the first start}"
   ./config.sh --unattended --replace \
     --url "${REPO_URL}" --token "${REG_TOKEN}" \
-    --name "${RUNNER_NAME}" --labels "${RUNNER_LABELS}" --work _work
+    --name "${RUNNER_NAME}" --labels "${RUNNER_LABELS}" --work "${WORK_DIR}"
   link_state
 fi
 
