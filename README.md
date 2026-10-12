@@ -100,8 +100,9 @@ Do not use `docker rm -f`: stop the container first so the runner can finish its
 registration lives in the volume, so a re-created container does not need a new token.
 A volume made before the runner was shared still holds a full copy of it; the first start with the
 new image deletes that copy and keeps the registration.
-The runner may log "A session for this runner already exists" for a couple of minutes while GitHub
-expires the old session; it then reconnects on its own.
+A normal stop (`docker stop`) lets the runner close its session, so the new container is online
+within seconds. After a crash or a kill, the runner may log "A session for this runner already
+exists" for a couple of minutes while GitHub expires the old session; it then reconnects on its own.
 
 ## Idle stop and on-demand start (secondary hosts)
 
@@ -152,9 +153,9 @@ loginctl enable-linger "$USER"                    # keep the timer running witho
 | `RUNNER_CTL_STATE_DIR` | `~/.local/state/runner-ctl` | state and API cache |
 | `RUNNER_LABEL` | `linux-sh` | the label of this host's runners (as for `setup.sh`) |
 
-A stopped runner is offline, so a job waits for it. Right after a start, GitHub may still hold the
-old session of the runner, so a job can wait up to about three minutes (see "A session for this
-runner already exists" above).
+A stopped runner is offline, so a job waits for it. After a normal stop the runner is online again
+within seconds of the start (see "A session for this runner already exists" above for the case of
+a crash or a kill).
 
 ## Removing a runner
 
