@@ -18,6 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `setup.sh`, the image and the entrypoint moved here from the dotfiles repository.
 - dev-charter (full) adopted: CI with a `gate` job, charter checks, issue and PR templates.
 
+### Fixed
+
+- `docker stop` now stops the runner gracefully (about 1 s, exit code 0) instead of waiting for the
+  timeout and killing it (31 s, exit code 137). A killed runner left its session on GitHub, so a
+  restart waited about two minutes ("A session for this runner already exists"); after a graceful
+  stop it is online again in seconds. The entrypoint runs `run.sh` as a child and sends SIGTERM to
+  the listener directly, because `run.sh` does not pass it on.
+
 ### Changed
 
 - The runner binaries are no longer copied into every volume. Each volume holds only the

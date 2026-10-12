@@ -80,7 +80,7 @@ bash setup.sh install OWNER/REPO
 
 `docker rm -f` は使わない。先に停止して、実行中のジョブを終わらせる。登録状態は volume にあるので、コンテナを作り直しても新しいトークンは要らない。
 runner 本体の共有前に作った volume には本体の完全なコピーが残っている。新しいイメージで最初に起動したとき、そのコピーは削除され、登録情報は残る。
-作り直した直後の数分間は、GitHub 側で古いセッションが失効するまで "A session for this runner already exists" と出続けることがあるが、自動で再接続する。
+通常の停止（`docker stop`）では runner が自分でセッションを閉じるので、新しいコンテナは数秒でオンラインになる。クラッシュや強制終了の後は、GitHub 側で古いセッションが失効するまでの数分間、"A session for this runner already exists" と出続けることがあるが、自動で再接続する。
 
 ## Idle stop and on-demand start (secondary hosts)
 
@@ -119,7 +119,7 @@ loginctl enable-linger "$USER"                    # ログインしなくても�
 | `RUNNER_CTL_STATE_DIR` | `~/.local/state/runner-ctl` | 状態と API のキャッシュ |
 | `RUNNER_LABEL` | `linux-sh` | このホストの runner のラベル（`setup.sh` と同じ） |
 
-停止中の runner はオフラインなので、ジョブはその起動を待つ。起動直後は GitHub 側に runner の古いセッションが残っていることがあり、ジョブは最長で 3 分ほど待つ（上の "A session for this runner already exists" を参照）。
+停止中の runner はオフラインなので、ジョブはその起動を待つ。通常の停止の後なら、起動から数秒でオンラインに戻る（クラッシュや強制終了の場合は、上の "A session for this runner already exists" を参照）。
 
 ## Removing a runner
 
