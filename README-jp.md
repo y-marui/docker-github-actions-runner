@@ -41,7 +41,7 @@ bash setup.sh install OWNER/REPO...      # --dry-run で内容だけ確認でき
 bash setup.sh status OWNER/REPO...
 ~~~
 
-runner はリポジトリ単位で登録する(個人アカウントにはアカウント単位の runner がないため)。コンテナ名は `ar-<repo>`、登録状態は Docker volume `ar-<repo>` に保存する。ワークフローは `runs-on: [self-hosted, linux-sh]` で選ぶ。
+runner はリポジトリ単位で登録する(個人アカウントにはアカウント単位の runner がないため)。コンテナ名は `ar-<repo>`、登録状態は Docker volume `ar-<repo>` に保存する。volume に入るのは登録情報とジョブの作業領域だけで、runner 本体はイメージのものを共有する(1 ホストに 24 個立てても、本体 約450MB が 24 個にはならない)。ワークフローは `runs-on: [self-hosted, linux-sh]` で選ぶ。
 
 `setup.sh` の環境変数:
 
@@ -79,6 +79,7 @@ bash setup.sh install OWNER/REPO
 ~~~
 
 `docker rm -f` は使わない。先に停止して、実行中のジョブを終わらせる。登録状態は volume にあるので、コンテナを作り直しても新しいトークンは要らない。
+runner 本体の共有前に作った volume には本体の完全なコピーが残っている。新しいイメージで最初に起動したとき、そのコピーは削除され、登録情報は残る。
 作り直した直後の数分間は、GitHub 側で古いセッションが失効するまで "A session for this runner already exists" と出続けることがあるが、自動で再接続する。
 
 ## Removing a runner
@@ -97,7 +98,7 @@ GitHub 側の登録を解除し、コンテナを停止・削除して、volume 
 
 ## Versions
 
-- `Dockerfile` の `RUNNER_VERSION` が runner のバージョンを固定する。runner は実行時に自己更新するので、古いままでも支障はない。ときどき上げる。
+- `Dockerfile` の `RUNNER_VERSION` が runner のバージョンを固定する。runner は実行時に自己更新するので、古いままでも支障はない。ときどき上げる。自己更新の結果はコンテナの書き込み層に残る(1 コンテナあたり 約450MB)。新しいイメージでコンテナを作り直すと破棄される。
 - Dependabot(`.github/dependabot.yml`)は、Docker のベースイメージと GitHub Actions を更新する。`SWIFTLINT_VERSION`、`GITLEAKS_VERSION`、`RUNNER_VERSION` は単なるビルド引数なので、手動で上げる。
 
 ## License
