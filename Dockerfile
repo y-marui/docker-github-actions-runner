@@ -5,7 +5,7 @@
 ARG SWIFTLINT_VERSION=0.65.1
 FROM ghcr.io/realm/swiftlint:${SWIFTLINT_VERSION} AS swiftlint
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 ARG TARGETARCH
 ARG RUNNER_VERSION=2.337.0
@@ -17,7 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     PATH=/runner/.local/bin:${PATH}
 
-# PIP_BREAK_SYSTEM_PACKAGES: Ubuntu 24.04 marks system python as externally managed (PEP 668),
+# PIP_BREAK_SYSTEM_PACKAGES: Ubuntu 26.04 marks system python as externally managed (PEP 668),
 # which makes `pip install` (e.g. pre-commit/action) fail for the non-root runner user.
 # PATH: `pip install` as that user puts executables (pre-commit) in ~/.local/bin.
 # Tools used by the CI jobs: git/gh/curl/jq/zip, python (pre-commit hooks), node,
@@ -29,7 +29,7 @@ RUN apt-get update \
       libglib2.0-0t64 libgl1 libopengl0 libfontconfig1 libfreetype6 libdbus-1-3 \
       libxkbcommon-x11-0 libx11-6 libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
       libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxrender1 libxi6 libsm6 libice6 \
-      libicu74 libssl3t64 \
+      libicu78 libssl3t64 \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [arch=${TARGETARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
