@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Ubuntu moves between LTS releases by hand (package names change); skip interim releases.
+      - dependency-name: ubuntu
+        versions: [">26.04"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
