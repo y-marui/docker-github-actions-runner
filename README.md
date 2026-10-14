@@ -17,7 +17,7 @@ only needs Docker and `gh`; nothing is built locally.
 ghcr.io/y-marui/actions-runner:latest
 ~~~
 
-The image is Ubuntu 24.04 with the runner, `git`, `gh`, `curl`, `jq`, `zip`, python (`pip`, `uv`),
+The image is Ubuntu 25.10 with the runner, `git`, `gh`, `curl`, `jq`, `zip`, python (`pip`, `uv`),
 node, `shellcheck`, `gitleaks`, `swiftlint`, and the shared libraries Qt tests load. It contains
 no secrets: the registration token is passed at run time. It does not mount the Docker socket,
 and the runner user has no sudo. Rootless `podman` is included for building images in jobs.

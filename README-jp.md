@@ -15,7 +15,7 @@ Linux の self-hosted GitHub Actions runner を Docker イメージとして提�
 ghcr.io/y-marui/actions-runner:latest
 ~~~
 
-イメージは Ubuntu 24.04 に runner、`git`、`gh`、`curl`、`jq`、`zip`、python(`pip`、`uv`)、node、`shellcheck`、`gitleaks`、`swiftlint`、Qt テストが読み込む共有ライブラリを加えたもの。秘密情報は含まず、登録トークンは実行時に渡す。Docker ソケットはマウントせず、runner ユーザーは sudo を使えない。ジョブ内でイメージをビルドするための rootless `podman` を含む。
+イメージは Ubuntu 25.10 に runner、`git`、`gh`、`curl`、`jq`、`zip`、python(`pip`、`uv`)、node、`shellcheck`、`gitleaks`、`swiftlint`、Qt テストが読み込む共有ライブラリを加えたもの。秘密情報は含まず、登録トークンは実行時に渡す。Docker ソケットはマウントせず、runner ユーザーは sudo を使えない。ジョブ内でイメージをビルドするための rootless `podman` を含む。
 
 ## Runners per OS
 

@@ -20,7 +20,7 @@ live in the dotfiles repository.
 
 ### Technology Stack
 
-- Docker (Ubuntu 24.04 base, GitHub Actions runner), Bash (`setup.sh`, `entrypoint.sh`)
+- Docker (Ubuntu 25.10 base, GitHub Actions runner), Bash (`setup.sh`, `entrypoint.sh`)
 - GitHub Actions (`ci.yml`, `publish.yml`, `dev-charter-check.yml`, `auto-assign-self.yml`)
 
 ### Main Directories
@@ -57,7 +57,7 @@ such as `AI_CONTEXT.md` and `README.md` (and its pair `README-jp.md`).
   fails with `startup_failure`.
 - Runner versions (`RUNNER_VERSION`, `GITLEAKS_VERSION`, `SWIFTLINT_VERSION`) are build arguments
   bumped by hand. Dependabot updates only the Docker base image and GitHub Actions.
-- Ubuntu base major upgrades are not a plain bump (package names such as `libicu74` change).
+- Ubuntu base major upgrades are not a plain bump (package names such as `libicu74` to `libicu76` change).
   Dependabot ignores the 26.04 major update; do it by hand together with the SwiftLint image.
 - Changing `setup.sh` behavior or the image's contents: update `README.md` and `README-jp.md`
   in the same change.
