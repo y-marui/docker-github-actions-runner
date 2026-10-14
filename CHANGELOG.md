@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- README: "Tuning the delays", with measured results of start delays and idle stops.
 - `runner-ctl.sh` keepalive (`RUNNER_CTL_KEEPALIVE_DAYS`, default 7): starts a container that has been
   stopped for that long so GitHub does not delete its registration after 14 days without a connection.
   `setup.sh uninstall` now starts a stopped container before deregistering it.
