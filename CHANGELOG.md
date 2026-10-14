@@ -36,6 +36,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The base image is now Ubuntu 26.04 LTS (was 24.04); `libicu74` is now `libicu78`. Dependabot skips
+  Ubuntu versions newer than 26.04, so interim releases such as 25.10 are not proposed.
 - The runner binaries are no longer copied into every volume. Each volume holds only the
   registration and work files (tens of KB), and a volume made earlier is slimmed down on its first
   start. A host with 24 runners no longer needs ~11 GB for them. The working directory of the
