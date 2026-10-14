@@ -187,6 +187,25 @@ A stopped runner is offline, so a job waits for it. After a normal stop the runn
 within seconds of the start (see "A session for this runner already exists" above for the case of
 a crash or a kill).
 
+### Tuning the delays
+
+GitHub gives a queued job to any idle runner with the label and does not tell you which one; the
+only way to prefer a host is to keep the others from starting early. A measured example (11 jobs per
+run, one repository, 4 replicas on an amd64 primary host, two Raspberry Pis as overflow):
+
+- A Pi start delay of 60 s let a Raspberry Pi pick up a job that the primary host would have
+  finished in about 35 s; it took 206 s there, and the Pi stayed online for its idle time and also
+  took the next job. The run took 496 s instead of about 100 s.
+- With the Pi delay at 240 s and its idle stop at 5 minutes, every job ran on the primary host and
+  the run took 89 to 101 s.
+
+So: keep the delay of the slower hosts well above the cold start of the faster host's extra
+replicas (roughly 20 to 60 s with a 20 s timer), and a short idle stop on the slower hosts. For the
+extra replicas of the primary host, a short delay (a few seconds) and a longer idle stop (about 10
+minutes; an idle runner is about 90 MiB) keep them warm for bursts of pushes; a cold start adds
+roughly 15 to 60 s to the first job. Run the timer more often on the primary host (for example every
+20 s) than on the secondary hosts.
+
 ## Removing a runner
 
 ~~~sh
