@@ -12,7 +12,8 @@ Read as needed:
 ## Project Overview
 
 Docker image for a Linux self-hosted GitHub Actions runner, and `setup.sh`, which registers
-one container per repository. The image is published to GHCR as
+one container per repository (more with `RUNNER_REPLICAS`: `ar-<repo>`, `ar-<repo>-2`, ...;
+`runner-ctl.sh` stops idle containers and starts them on demand). The image is published to GHCR as
 `ghcr.io/y-marui/actions-runner` (linux/amd64 and linux/arm64). This repository is the
 source of truth for the image and the script; the macOS and Windows runners are native and
 live in the dotfiles repository.

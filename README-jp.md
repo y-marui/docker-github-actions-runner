@@ -23,7 +23,7 @@ ghcr.io/y-marui/actions-runner:latest
 |---|---|---|
 | macOS | ネイティブ(LaunchDaemon) | dotfiles の `macos/setup_actions_runner.sh` |
 | Windows | ネイティブ(Windows サービス) | dotfiles の `windows/setup_actions_runner.ps1` |
-| Linux | Docker(リポジトリごとに 1 コンテナ) | このリポジトリの `setup.sh` |
+| Linux | Docker(リポジトリごとに 1 つ以上のコンテナ) | このリポジトリの `setup.sh` |
 
 ## Security: never register a runner on a public repository
 
@@ -62,7 +62,7 @@ runner は同時に 1 ジョブしか処理しないので、リポジトリの�
 RUNNER_REPLICAS=3 bash setup.sh install OWNER/REPO
 ~~~
 
-1 つ目のコンテナは従来どおり `ar-<repo>`、2 つ目以降は `ar-<repo>-2`、`ar-<repo>-3`（runner 名も同じ接尾辞）で、volume は別々になる。`install` は既にあるコンテナをスキップするので、導入済みのリポジトリで数を増やすと、足りない分だけ追加される。`status` と `uninstall` は全レプリカが対象。`runner-ctl.sh` は `ar-<repo>` だけを扱うので、副ホストでは既定の 1 のままにする。末尾が `-<数字>` のリポジトリ名（`foo` をレプリカ付きにすると `foo-2` と名前が衝突する）は避ける。
+1 つ目のコンテナは従来どおり `ar-<repo>`、2 つ目以降は `ar-<repo>-2`、`ar-<repo>-3`（runner 名も同じ接尾辞）で、volume は別々になる。`install` は既にあるコンテナをスキップするので、導入済みのリポジトリで数を増やすと、足りない分だけ追加される。`status` と `uninstall` は全レプリカが対象。`runner-ctl.sh`(下記 "Idle stop and on-demand start")は、アイドルのコンテナを止め、ジョブが溜まったときに起動する。主ホストでは `ar-<repo>` を常時起動のままにして、追加レプリカだけを管理させることもできる。末尾が `-<数字>` のリポジトリ名（`foo` をレプリカ付きにすると `foo-2` と名前が衝突する）は避ける。
 
 ## Building images in jobs (rootless podman)
 

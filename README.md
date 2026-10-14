@@ -28,7 +28,7 @@ and the runner user has no sudo. Rootless `podman` is included for building imag
 |---|---|---|
 | macOS | native (LaunchDaemon) | dotfiles `macos/setup_actions_runner.sh` |
 | Windows | native (Windows service) | dotfiles `windows/setup_actions_runner.ps1` |
-| Linux | Docker, one container per repository | `setup.sh` in this repository |
+| Linux | Docker, one or more containers per repository | `setup.sh` in this repository |
 
 ## Security: never register a runner on a public repository
 
@@ -79,8 +79,9 @@ RUNNER_REPLICAS=3 bash setup.sh install OWNER/REPO
 The first container keeps the name `ar-<repo>`; the others are `ar-<repo>-2`, `ar-<repo>-3` (the
 runner names get the same suffix), each with its own volume. `install` skips containers that
 already exist, so raising the count on an installed repository only adds the new ones, and
-`status` and `uninstall` cover all replicas. `runner-ctl.sh` manages only `ar-<repo>`, so keep the
-default of 1 on secondary hosts. Avoid repository names that end in `-<number>` (`foo` with
+`status` and `uninstall` cover all replicas. `runner-ctl.sh` (see "Idle stop and on-demand start") stops idle containers, starts them when
+jobs queue up, and on the primary host can leave `ar-<repo>` running and manage only the extras.
+Avoid repository names that end in `-<number>` (`foo` with
 replicas and `foo-2` would share a container name).
 
 ## Building images in jobs (rootless podman)

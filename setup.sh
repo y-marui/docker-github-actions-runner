@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # private リポジトリ向けの Linux self-hosted runner（Docker コンテナ）を作る・消す。
-# リポジトリごとに 1 コンテナ（個人アカウントにはアカウント単位の runner がないため）。
+# リポジトリごとにコンテナ（既定 1、RUNNER_REPLICAS で増やせる。個人アカウントにはアカウント単位の runner がないため）。
 #
 # 使い方（docker と、リポジトリの管理者権限で認証済みの gh が要る）:
 #   bash setup.sh pull
@@ -68,9 +68,12 @@ container_name() {
   fi
 }
 
-# repo の全レプリカ（既存のコンテナ）。-N の接尾辞を含むので、別の repo 名（foo と foo-2）とは区別できない
+# repo の全レプリカ（既存のコンテナ）。名前は正規表現ではなく文字列として比べる（repo 名の "." を任意の 1 文字にしない）。
+# -N の接尾辞を含むので、別の repo 名（foo と foo-2）とは区別できない
 existing_containers() {
-  docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E "^$(container_name "$1")(-[0-9]+)?\$" || true
+  docker ps -a --format '{{.Names}}' 2>/dev/null | awk -v b="$(container_name "$1")" '
+    $0 == b { print; next }
+    index($0, b "-") == 1 && substr($0, length(b) + 2) ~ /^[0-9]+$/ { print }' || true
 }
 
 container_exists() {
@@ -144,7 +147,8 @@ cmd_status() {
   local repo
   for repo in "$@"; do
     echo "== ${repo}"
-    docker ps -a --filter "name=^$(container_name "${repo}")(-[0-9]+)?$" --format '  container: {{.Names}} {{.Status}}'
+    docker ps -a --format '{{.Names}} {{.Status}}' | awk -v b="$(container_name "${repo}")" '
+      $1 == b || (index($1, b "-") == 1 && substr($1, length(b) + 2) ~ /^[0-9]+$/) { print "  container: " $0 }'
     ghc api "repos/${repo}/actions/runners" \
       --jq '.runners[] | "  github: \(.name) \(.status) busy=\(.busy) [\([.labels[].name]|join(","))]"'
   done
