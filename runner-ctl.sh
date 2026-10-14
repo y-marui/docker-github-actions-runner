@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# 副ホスト（常時稼働でない小さな Linux ホスト）で、アイドルの runner コンテナを止め、
-# ジョブが待っているときだけ起動する。主ホストでは動かさない（runner は常時起動のまま）。
-# setup.sh が作った ar-<repo> コンテナだけを対象にし、削除はしない（登録は volume に残る）。
+# アイドルの runner コンテナを止め、ジョブが待っているときだけ起動する。
+# 副ホスト（常時稼働でない小さな Linux ホスト）では全コンテナが対象。主ホストでは
+# RUNNER_CTL_KEEP_PRIMARY=1 にして、1 つ目（ar-<repo>）を常時起動のまま、追加レプリカ
+# （ar-<repo>-2 以降。setup.sh の RUNNER_REPLICAS）だけを対象にする。
+# setup.sh が作った ar-<repo>、ar-<repo>-N コンテナだけを扱い、削除はしない（登録は volume に残る）。
 #
 # 使い方（docker と curl と jq が要る。cron か systemd timer で 1 分ごとに tick を実行する）:
 #   bash runner-ctl.sh tick [--dry-run]
@@ -13,7 +15,10 @@
 #   RUNNER_CTL_TOKEN_FILE   GitHub トークンのファイル（fine-grained PAT: Actions の Read）。権限は 600
 #   RUNNER_CTL_IDLE_MINUTES アイドルがこの分数続いたら止める（既定: 15）
 #   RUNNER_CTL_START_DELAY  ジョブがこの秒数キューに残ったら起動する（既定: 60）。ホストごとにずらすと優先順位になる
-#   RUNNER_CTL_MAX_RUNNING  同時に動かすコンテナの上限（既定: 4）
+#   RUNNER_CTL_MAX_RUNNING  このスクリプトが管理するコンテナ（KEEP_PRIMARY なら追加レプリカだけ）の同時起動数の上限（既定: 4）
+#   RUNNER_CTL_KEEPALIVE_DAYS 停止したままこの日数たったコンテナを、ジョブがなくても一度起動する（既定: 7。0 で無効）。
+#                           GitHub は 14 日接続のない runner の登録を自動で削除するため、その手前で接続し直す
+#   RUNNER_CTL_KEEP_PRIMARY 1 にすると、ar-<repo>（1 つ目）を止めも起動もしない（主ホスト用。既定: 0）
 #   RUNNER_CTL_STATE_DIR    状態とキャッシュの置き場（既定: ~/.local/state/runner-ctl）
 #   RUNNER_LABEL            このホストの runner のラベル（setup.sh と同じ。既定: linux-sh）
 #
@@ -33,6 +38,9 @@ fi
 IDLE_MINUTES="${RUNNER_CTL_IDLE_MINUTES:-15}"
 START_DELAY="${RUNNER_CTL_START_DELAY:-60}"
 MAX_RUNNING="${RUNNER_CTL_MAX_RUNNING:-4}"
+KEEP_PRIMARY="${RUNNER_CTL_KEEP_PRIMARY:-0}"
+KEEPALIVE_DAYS="${RUNNER_CTL_KEEPALIVE_DAYS:-7}"
+SNAP=""
 STATE_DIR="${RUNNER_CTL_STATE_DIR:-${HOME}/.local/state/runner-ctl}"
 RUNNER_LABEL="${RUNNER_LABEL:-linux-sh}"
 API="${RUNNER_CTL_API:-https://api.github.com}"
@@ -142,25 +150,50 @@ prepare_state() {
   )
 }
 
-# このホストが引き受けられる、${START_DELAY} 秒以上キューに残ったジョブがあるか
-has_waiting_job() {
-  local repo="$1" host_labels runs run_id
+# docker の一覧（"名前 状態" の行）。tick の最初に 1 回だけ取る
+snapshot() {
+  docker ps -a --format '{{.Names}} {{.State}}' 2>/dev/null || true
+}
+
+# repo のコンテナ（"名前 状態" の行）を番号順に出す。KEEP_PRIMARY=1 なら 1 つ目を除く
+managed_containers() {
+  local base
+  base="$(container_name "$1")"
+  printf '%s\n' "${SNAP}" | awk -v b="${base}" -v keep="${KEEP_PRIMARY}" '
+    $1 == b { if (keep != 1) print 1, $1, $2; next }
+    index($1, b "-") == 1 { n = substr($1, length(b) + 2); if (n ~ /^[0-9]+$/) print n, $1, $2 }' |
+    sort -n | cut -d' ' -f2-
+}
+
+# このホストが引き受けられる、${START_DELAY} 秒以上キューに残ったジョブの数（limit 件で数えるのをやめる）
+count_waiting_jobs() {
+  local repo="$1" limit="$2" host_labels runs run_id n total=0
   host_labels="$(jq -cn --arg l "${RUNNER_LABEL}" --arg a "$(host_arch_label)" '["self-hosted","linux",$a,($l|ascii_downcase)]')"
-  runs="$(api_get "repos/${repo}/actions/runs?status=queued&per_page=20")" || return 1
+  runs="$(api_get "repos/${repo}/actions/runs?status=queued&per_page=20")" || {
+    printf '0'
+    return 0
+  }
   for run_id in $(jq -r '.workflow_runs[].id' <<<"${runs}"); do
-    api_get "repos/${repo}/actions/runs/${run_id}/jobs?per_page=100" |
-      jq -e --argjson host "${host_labels}" --argjson now "$(now)" --argjson delay "${START_DELAY}" '
+    n="$(api_get "repos/${repo}/actions/runs/${run_id}/jobs?per_page=100" |
+      jq --argjson host "${host_labels}" --argjson now "$(now)" --argjson delay "${START_DELAY}" '
         [.jobs[]
          | select(.status == "queued")
          | select((.labels | map(ascii_downcase)) - $host | length == 0)
          | select(($now - (.created_at | fromdateiso8601)) >= $delay)]
-        | length > 0' >/dev/null && return 0
+        | length')" || continue
+    total=$((total + n))
+    ((total >= limit)) && break
   done
-  return 1
+  printf '%s' "${total}"
 }
 
-container_status() {
-  docker inspect -f '{{.State.Status}}' "$1" 2>/dev/null || true
+# 停止中コンテナの最後の接続の代わり（最後に止まった時刻。一度も起動していなければ作成時刻）を "名前 epoch" で出す
+last_seen() {
+  docker inspect -f '{{.Name}} {{.State.FinishedAt}} {{.Created}}' "$@" 2>/dev/null |
+    jq -rR 'split(" ") as $p
+      | ($p[1] | sub("\\.[0-9]+"; "")) as $f
+      | ($p[2] | sub("\\.[0-9]+"; "")) as $c
+      | "\($p[0] | ltrimstr("/")) \((if ($f | startswith("0001")) then $c else $f end) | fromdateiso8601)"' || true
 }
 
 is_busy() {
@@ -168,64 +201,103 @@ is_busy() {
 }
 
 cmd_tick() {
-  local repo cname status active last idle_s running=0
-  local -a repos=()
+  local repo cname state active last idle_s running=0 idle_running waiting starts i
+  local -a repos=() stopped=() leftover=()
   while IFS= read -r repo; do
     repos+=("${repo}")
   done < <(load_repos)
   prepare_state
+  SNAP="$(snapshot)"
 
-  for repo in "${repos[@]}"; do
-    [[ "$(container_status "$(container_name "${repo}")")" == "running" ]] && running=$((running + 1))
+  for repo in ${repos[@]+"${repos[@]}"}; do
+    while read -r cname state; do
+      [[ "${state}" == "running" ]] && running=$((running + 1))
+    done < <(managed_containers "${repo}")
   done
 
-  for repo in "${repos[@]}"; do
-    cname="$(container_name "${repo}")"
-    status="$(container_status "${cname}")"
-    active="${STATE_DIR}/${cname}.active"
-    case "${status}" in
-      running)
-        if is_busy "${cname}"; then
-          now >"${active}"
-          continue
-        fi
-        [[ -f "${active}" ]] || now >"${active}"
-        last="$(cat "${active}")"
-        idle_s=$(($(now) - last))
-        if ((idle_s >= IDLE_MINUTES * 60)); then
-          log "stop ${cname}: idle ${idle_s}s"
-          act docker stop -t 30 "${cname}" >/dev/null
-          running=$((running - 1))
-        fi
-        ;;
-      exited | created)
-        if ((running >= MAX_RUNNING)); then
-          continue
-        fi
-        if has_waiting_job "${repo}"; then
-          log "start ${cname}: a job has been queued for at least ${START_DELAY}s"
-          act docker start "${cname}" >/dev/null
-          now >"${active}"
-          running=$((running + 1))
-        fi
-        ;;
-      *) ;; # コンテナなし、または paused/restarting など。触らない
-    esac
+  for repo in ${repos[@]+"${repos[@]}"}; do
+    stopped=()
+    idle_running=0
+    while read -r cname state; do
+      [[ -n "${cname}" ]] || continue
+      active="${STATE_DIR}/${cname}.active"
+      case "${state}" in
+        running)
+          if is_busy "${cname}"; then
+            now >"${active}"
+            continue
+          fi
+          [[ -f "${active}" ]] || now >"${active}"
+          last="$(cat "${active}")"
+          idle_s=$(($(now) - last))
+          if ((idle_s >= IDLE_MINUTES * 60)); then
+            log "stop ${cname}: idle ${idle_s}s"
+            act docker stop -t 30 "${cname}" >/dev/null
+            running=$((running - 1))
+          else
+            idle_running=$((idle_running + 1))
+          fi
+          ;;
+        exited | created) stopped+=("${cname}") ;;
+        *) ;; # paused/restarting など。触らない
+      esac
+    done < <(managed_containers "${repo}")
+
+    if ((${#stopped[@]} > 0 && running < MAX_RUNNING)); then
+      waiting="$(count_waiting_jobs "${repo}" $((${#stopped[@]} + idle_running)))"
+      # すでに動いていて空いているコンテナは、待っているジョブを数秒で取る
+      starts=$((waiting - idle_running))
+      ((starts > ${#stopped[@]})) && starts=${#stopped[@]}
+      for ((i = 0; i < starts && running < MAX_RUNNING; i++)); do
+        cname="${stopped[i]}"
+        log "start ${cname}: ${waiting} job(s) queued for at least ${START_DELAY}s"
+        act docker start "${cname}" >/dev/null
+        now >"${STATE_DIR}/${cname}.active"
+        running=$((running + 1))
+      done
+      stopped=(${stopped[@]+"${stopped[@]:i}"})
+    fi
+    for ((i = 0; i < ${#stopped[@]}; i++)); do
+      leftover+=("${stopped[i]}")
+    done
   done
+
+  keepalive "${running}" ${leftover[@]+"${leftover[@]}"}
+}
+
+# 長く止まったままのコンテナを、古いものから、上限の範囲で起動する（14 日の失効を避ける）
+keepalive() {
+  local running="$1" cname epoch
+  shift
+  ((KEEPALIVE_DAYS > 0 && $# > 0)) || return 0
+  while read -r cname epoch; do
+    ((running < MAX_RUNNING)) || break
+    ((($(now) - epoch) >= KEEPALIVE_DAYS * 86400)) || break
+    log "start ${cname}: keepalive, not connected for $((($(now) - epoch) / 86400)) days"
+    act docker start "${cname}" >/dev/null
+    now >"${STATE_DIR}/${cname}.active"
+    running=$((running + 1))
+  done < <(last_seen "$@" | sort -k2 -n)
 }
 
 cmd_status() {
-  local repo cname status active last
+  local repo cname state active last
+  local -a repos=()
   while IFS= read -r repo; do
-    cname="$(container_name "${repo}")"
-    status="$(container_status "${cname}")"
-    active="${STATE_DIR}/${cname}.active"
-    last="-"
-    if [[ "${status}" == "running" && -f "${active}" ]]; then
-      last="$((($(now) - $(cat "${active}")) / 60))m"
-    fi
-    printf '%-40s %-10s idle=%s\n' "${cname}" "${status:-none}" "${last}"
+    repos+=("${repo}")
   done < <(load_repos)
+  SNAP="$(snapshot)"
+  for repo in ${repos[@]+"${repos[@]}"}; do
+    while read -r cname state; do
+      [[ -n "${cname}" ]] || continue
+      active="${STATE_DIR}/${cname}.active"
+      last="-"
+      if [[ "${state}" == "running" && -f "${active}" ]]; then
+        last="$((($(now) - $(cat "${active}")) / 60))m"
+      fi
+      printf '%-40s %-10s idle=%s\n' "${cname}" "${state}" "${last}"
+    done < <(managed_containers "${repo}")
+  done
 }
 
 main() {

@@ -23,7 +23,7 @@ ghcr.io/y-marui/actions-runner:latest
 |---|---|---|
 | macOS | ネイティブ(LaunchDaemon) | dotfiles の `macos/setup_actions_runner.sh` |
 | Windows | ネイティブ(Windows サービス) | dotfiles の `windows/setup_actions_runner.ps1` |
-| Linux | Docker(リポジトリごとに 1 コンテナ) | このリポジトリの `setup.sh` |
+| Linux | Docker(リポジトリごとに 1 つ以上のコンテナ) | このリポジトリの `setup.sh` |
 
 ## Security: never register a runner on a public repository
 
@@ -51,7 +51,18 @@ runner はリポジトリ単位で登録する(個人アカウントにはアカ
 | `RUNNER_HOST` | `hostname -s` | runner 名の接頭辞 |
 | `RUNNER_IMAGE` | `ghcr.io/y-marui/actions-runner:latest` | 使用するイメージ |
 | `RUNNER_CPUS` / `RUNNER_MEMORY` | 未設定 | コンテナごとの上限(例: `2` / `4g`) |
+| `RUNNER_REPLICAS` | `1` | リポジトリごとのコンテナ数（下記） |
 | `RUNNER_PODMAN` | `0` | `1` にすると、ジョブ内でイメージをビルドできる(下記)。ラベル `linux-podman` も付く |
+
+### More than one runner per repository
+
+runner は同時に 1 ジョブしか処理しないので、リポジトリの並列度は、全ホストに登録した runner の数で決まる。CI が少数の runner の後ろで待たされるリポジトリは、主ホストで `RUNNER_REPLICAS` を増やす。
+
+~~~sh
+RUNNER_REPLICAS=3 bash setup.sh install OWNER/REPO
+~~~
+
+1 つ目のコンテナは従来どおり `ar-<repo>`、2 つ目以降は `ar-<repo>-2`、`ar-<repo>-3`（runner 名も同じ接尾辞）で、volume は別々になる。`install` は既にあるコンテナをスキップするので、導入済みのリポジトリで数を増やすと、足りない分だけ追加される。`status` と `uninstall` は全レプリカが対象。`runner-ctl.sh`(下記 "Idle stop and on-demand start")は、アイドルのコンテナを止め、ジョブが溜まったときに起動する。主ホストでは `ar-<repo>` を常時起動のままにして、追加レプリカだけを管理させることもできる。末尾が `-<数字>` のリポジトリ名（`foo` をレプリカ付きにすると `foo-2` と名前が衝突する）は避ける。
 
 ## Building images in jobs (rootless podman)
 
@@ -82,13 +93,14 @@ bash setup.sh install OWNER/REPO
 runner 本体の共有前に作った volume には本体の完全なコピーが残っている。新しいイメージで最初に起動したとき、そのコピーは削除され、登録情報は残る。
 通常の停止（`docker stop`）では runner が自分でセッションを閉じるので、新しいコンテナは数秒でオンラインになる。クラッシュや強制終了の後は、GitHub 側で古いセッションが失効するまでの数分間、"A session for this runner already exists" と出続けることがあるが、自動で再接続する。
 
-## Idle stop and on-demand start (secondary hosts)
+## Idle stop and on-demand start
 
-任意。常時稼働の主ホストと、小さな副ホスト（Raspberry Pi など）が同じリポジトリを登録していると、GitHub は同じラベルの空いている runner のどれかにジョブを渡す。そのため副ホストにもジョブがランダムに流れ、どのコンテナもリスナーを常時動かしてしまう。`runner-ctl.sh` は副ホストを静かに保つ。**副ホストだけ**で動かし、主ホストでは動かさない（runner は常時起動のまま）。
+任意。常時稼働の主ホストと、小さな副ホスト（Raspberry Pi など）が同じリポジトリを登録していると、GitHub は同じラベルの空いている runner のどれかにジョブを渡す。そのため副ホストにもジョブがランダムに流れ、どのコンテナもリスナーを常時動かしてしまう。`runner-ctl.sh` は副ホストを静かに保つ。主ホストでは `RUNNER_CTL_KEEP_PRIMARY=1` にする。各リポジトリの 1 つ目（`ar-<repo>`）は常時起動のままで、追加レプリカ（`RUNNER_REPLICAS` による `ar-<repo>-2` 以降）だけを、アイドルで止め、ジョブが溜まったときに起動する。
 
 - **停止**: `RUNNER_CTL_IDLE_MINUTES` の間ジョブのない `ar-*` コンテナを `docker stop -t 30` で止める。コンテナは削除しない（登録は volume に残る）。
-- **起動**: 停止中のコンテナは、そのリポジトリでこのホストが実行できるジョブ（ラベルが `self-hosted`・`linux`・アーキテクチャ・`RUNNER_LABEL` に収まるもの）が `RUNNER_CTL_START_DELAY` 秒以上キューに残ったときに起動する。動かすコンテナは `RUNNER_CTL_MAX_RUNNING` 個まで。
-- **優先順位**: ホストごとに `RUNNER_CTL_START_DELAY` を変える（例: 60 秒と 120 秒）。ジョブは主ホストがすぐ取り、次に遅延の短い副ホスト、誰も取らなかったときだけ他の副ホストが起動する。
+- **起動**: 停止中のコンテナは、そのリポジトリでこのホストが実行できるジョブ（ラベルが `self-hosted`・`linux`・アーキテクチャ・`RUNNER_LABEL` に収まるもの）が `RUNNER_CTL_START_DELAY` 秒以上キューに残ったときに起動する。動かすコンテナは `RUNNER_CTL_MAX_RUNNING` 個まで。待っているジョブ 1 件につき停止中のコンテナを 1 つ起動するので、1 件のジョブで全レプリカが起きることはない。
+- **保活**: GitHub は、14 日間接続のない非 ephemeral の runner の登録を自動で削除する。`RUNNER_CTL_KEEPALIVE_DAYS`（既定 7）日停止したままのコンテナは、ジョブがなくても、古いものから `RUNNER_CTL_MAX_RUNNING` の範囲で起動する。そのあとはアイドル停止でまた止まる。最後の接続は、コンテナの最終停止時刻（一度も動いていなければ作成時刻）で代用するので、状態ファイルは要らない。
+- **優先順位**: ホストごとに `RUNNER_CTL_START_DELAY` を変える（例: 60 秒と 120 秒。主ホストの追加レプリカは数秒）。起動の判断は tick のときだけなので、タイマーの間隔より短い遅延は意味がない。ジョブは主ホストがすぐ取り、次に遅延の短い副ホスト、誰も取らなかったときだけ他の副ホストが起動する。
 
 対象は、指定したリポジトリの `ar-*` コンテナだけ。キューの確認は条件付きリクエストで行う（`304` はレート制限に数えられない）。
 
@@ -115,7 +127,9 @@ loginctl enable-linger "$USER"                    # ログインしなくても�
 | `RUNNER_CTL_TOKEN_FILE` | 必須 | トークンのファイル（権限 600） |
 | `RUNNER_CTL_IDLE_MINUTES` | `15` | アイドルがこの分数続いたら止める |
 | `RUNNER_CTL_START_DELAY` | `60` | この秒数以上キューに残ったジョブのときに起動する |
-| `RUNNER_CTL_MAX_RUNNING` | `4` | 同時に動かすコンテナの上限 |
+| `RUNNER_CTL_MAX_RUNNING` | `4` | このスクリプトが管理するコンテナの同時起動数の上限 |
+| `RUNNER_CTL_KEEPALIVE_DAYS` | `7` | この日数停止したままのコンテナを、ジョブがなくても起動する（`0` で無効） |
+| `RUNNER_CTL_KEEP_PRIMARY` | `0` | `1` で `ar-<repo>`（1 つ目）に触れない。主ホスト用 |
 | `RUNNER_CTL_STATE_DIR` | `~/.local/state/runner-ctl` | 状態と API のキャッシュ |
 | `RUNNER_LABEL` | `linux-sh` | このホストの runner のラベル（`setup.sh` と同じ） |
 
@@ -127,7 +141,16 @@ loginctl enable-linger "$USER"                    # ログインしなくても�
 bash setup.sh uninstall OWNER/REPO
 ~~~
 
-GitHub 側の登録を解除し、コンテナを停止・削除して、volume も削除する。
+全レプリカについて、GitHub 側の登録を解除し（停止中のコンテナは先に起動する）、コンテナを停止・削除して、volume も削除する。リポジトリの追加レプリカだけを外すときは、`ar-<repo>` を残して 1 つずつ手で解除する。
+
+~~~sh
+token=$(gh api -X POST repos/OWNER/REPO/actions/runners/remove-token --jq .token)
+docker start ar-<repo>-2 && sleep 3
+docker exec ar-<repo>-2 ./config.sh remove --token "$token"
+docker stop -t 30 ar-<repo>-2 && docker rm ar-<repo>-2 && docker volume rm ar-<repo>-2
+~~~
+
+`runner-ctl` を止めるだけでも害はない。停止したままの追加レプリカは、14 日後に GitHub 側で登録が自動削除される。
 
 ## Publishing
 

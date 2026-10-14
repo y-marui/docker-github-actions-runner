@@ -17,7 +17,20 @@ cat >"${TMP}/bin/docker" <<'FAKE_DOCKER'
 #!/usr/bin/env bash
 # containers: "name status busy" の行。変更系の呼び出しは calls.log に残す
 case "$1" in
+  ps)
+    cut -d' ' -f1,2 "${FAKE_DIR}/containers"
+    ;;
   inspect)
+    if [[ "$3" == *FinishedAt* ]]; then
+      # keepalive: "名前 FinishedAt Created"。FAKE_DIR/finished に "名前 ISO" があればそれ、なければ 1 時間前
+      shift 3
+      for n in "$@"; do
+        f="$(grep "^${n} " "${FAKE_DIR}/finished" 2>/dev/null | cut -d' ' -f2)"
+        f="${f:-$(date -u -r $((FAKE_NOW - 3600)) +%Y-%m-%dT%H:%M:%S.123456789Z 2>/dev/null || date -u -d @$((FAKE_NOW - 3600)) +%Y-%m-%dT%H:%M:%S.123456789Z)}"
+        echo "/${n} ${f} 2026-01-01T00:00:00.000000000Z"
+      done
+      exit 0
+    fi
     name="${@: -1}"
     line="$(grep "^${name} " "${FAKE_DIR}/containers" || true)"
     [[ -n "${line}" ]] || exit 1
@@ -99,9 +112,10 @@ new_case() {
   mkdir -p "${FAKE_DIR}/api" "${FAKE_DIR}/state"
   : >"${FAKE_DIR}/containers"
   : >"${FAKE_DIR}/calls.log"
+  : >"${FAKE_DIR}/finished"
   printf 'o/a\no/b\n' >"${FAKE_DIR}/repos"
   printf 'test-token\n' >"${FAKE_DIR}/token"
-  export FAKE_DIR FAKE_ARCH=aarch64
+  export FAKE_DIR FAKE_ARCH=aarch64 FAKE_NOW="${NOW}"
   EXTRA_ENV=()
 }
 
@@ -124,8 +138,13 @@ queued_job() { # repo age_seconds label... ; ジョブは queued
     >"${FAKE_DIR}/api/repos_${repo/\//_}_actions_runs_11_jobs_per_page_100.json"
 }
 
+stopped_since() { # name days_ago
+  local t=$((NOW - $2 * 86400))
+  echo "$1 $(date -u -r "${t}" +%Y-%m-%dT%H:%M:%S.5Z 2>/dev/null || date -u -d "@${t}" +%Y-%m-%dT%H:%M:%S.5Z)" >>"${FAKE_DIR}/finished"
+}
+
 tick() {
-  PATH="${TMP}/bin:${PATH}" RUNNER_CTL_CONFIG=/dev/null RUNNER_CTL_NOW="${NOW}" \
+  env PATH="${TMP}/bin:${PATH}" RUNNER_CTL_CONFIG=/dev/null RUNNER_CTL_NOW="${NOW}" \
     RUNNER_CTL_REPOS_FILE="${FAKE_DIR}/repos" RUNNER_CTL_TOKEN_FILE="${FAKE_DIR}/token" \
     RUNNER_CTL_STATE_DIR="${FAKE_DIR}/state" RUNNER_CTL_API="http://api.test" \
     RUNNER_CTL_IDLE_MINUTES=15 RUNNER_CTL_START_DELAY=60 RUNNER_CTL_MAX_RUNNING=4 \
@@ -202,6 +221,76 @@ check "the second pass sent If-None-Match" file_lines "${FAKE_DIR}/curl.log" "If
 
 new_case 19; container ar-a exited; tick
 check "an API error does not start anything" no_calls
+
+echo "replicas"
+new_case 119; container ar-a exited; container ar-a-2 exited; container ar-a-3 exited
+queued_job o/a 600 self-hosted linux-sh; tick
+check "one queued job starts one replica" has_call "start ar-a"
+check "the other replicas stay stopped" no_call "start ar-a-2"
+
+new_case 20; container ar-a running; container ar-a-2 exited; queued_job o/a 600 self-hosted linux-sh
+active_at ar-a 60; tick
+check "an idle running replica is expected to take the job" no_calls
+
+new_case 21; container ar-a running busy; container ar-a-2 exited; container ar-a-3 exited
+queued_job o/a 600 self-hosted linux-sh; tick
+check "a busy replica does not prevent starting another" has_call "start ar-a-2"
+check "only one is started for one job" no_call "start ar-a-3"
+
+new_case 22; container ar-a exited; container ar-a-2 exited; container ar-a-3 exited
+queued_job o/a 600 self-hosted linux-sh
+jq -c '.jobs += .jobs + .jobs' "${FAKE_DIR}/api/repos_o_a_actions_runs_11_jobs_per_page_100.json" >"${TMP}/j" && mv "${TMP}/j" "${FAKE_DIR}/api/repos_o_a_actions_runs_11_jobs_per_page_100.json"
+tick
+check "three queued jobs start three replicas" has_call "start ar-a-3"
+
+new_case 23; container ar-a exited; container ar-a-2 exited; container ar-a-3 exited
+queued_job o/a 600 self-hosted linux-sh
+jq -c '.jobs += .jobs + .jobs' "${FAKE_DIR}/api/repos_o_a_actions_runs_11_jobs_per_page_100.json" >"${TMP}/j" && mv "${TMP}/j" "${FAKE_DIR}/api/repos_o_a_actions_runs_11_jobs_per_page_100.json"
+EXTRA_ENV=(RUNNER_CTL_MAX_RUNNING=2); tick
+check "the running cap limits replicas started at once" file_lines "${FAKE_DIR}/calls.log" "^start" 2
+
+echo "keep primary"
+new_case 24; container ar-a running; active_at ar-a $((60 * 60)); EXTRA_ENV=(RUNNER_CTL_KEEP_PRIMARY=1); tick
+check "the primary is never stopped" no_calls
+
+new_case 25; container ar-a exited; queued_job o/a 600 self-hosted linux-sh; EXTRA_ENV=(RUNNER_CTL_KEEP_PRIMARY=1); tick
+check "the primary is never started" no_calls
+
+new_case 26; container ar-a running; container ar-a-2 running; container ar-a-3 exited
+active_at ar-a-2 $((4 * 60)); queued_job o/a 600 self-hosted linux-sh
+EXTRA_ENV=(RUNNER_CTL_KEEP_PRIMARY=1 RUNNER_CTL_IDLE_MINUTES=3); tick
+check "an idle extra replica is stopped" has_call "stop ar-a-2"
+check "the primary does not count against the cap" has_call "start ar-a-3"
+
+new_case 27; container ar-a running busy; container ar-a-2 exited; container ar-a-3 exited
+queued_job o/a 600 self-hosted linux-sh; EXTRA_ENV=(RUNNER_CTL_KEEP_PRIMARY=1); tick
+check "an extra replica starts when the primary is busy" has_call "start ar-a-2"
+
+new_case 28; container ar-a exited; container ar-a-2 exited; container ar-a-20 exited
+queued_job o/a 600 self-hosted linux-sh; EXTRA_ENV=(RUNNER_CTL_KEEP_PRIMARY=1); tick
+check "replicas are started in numeric order" has_call "start ar-a-2"
+
+echo "keepalive"
+new_case 29; container ar-a exited; stopped_since ar-a 8; tick
+check "a container stopped for 8 days is started without a job" has_call "start ar-a"
+
+new_case 30; container ar-a exited; stopped_since ar-a 5; tick
+check "a container stopped for 5 days is left alone" no_calls
+
+new_case 31; container ar-a exited; stopped_since ar-a 30; EXTRA_ENV=(RUNNER_CTL_KEEPALIVE_DAYS=0); tick
+check "keepalive 0 disables it" no_calls
+
+new_case 32; container ar-a exited; container ar-b exited; stopped_since ar-a 9; stopped_since ar-b 20
+EXTRA_ENV=(RUNNER_CTL_MAX_RUNNING=1); tick
+check "the oldest is started first" has_call "start ar-b"
+check "the cap limits keepalive starts" no_call "start ar-a"
+
+new_case 33; container ar-a exited; container ar-a-2 exited; stopped_since ar-a-2 10; queued_job o/a 600 self-hosted linux-sh
+tick
+check "a job start and a keepalive start are independent" file_lines "${FAKE_DIR}/calls.log" "^start" 2
+
+new_case 34; container ar-a exited; stopped_since ar-a 10; tick --dry-run
+check "dry-run does not start for keepalive" no_calls
 
 printf '\n%d passed, %d failed\n' "${PASS}" "${FAIL}"
 [[ "${FAIL}" -eq 0 ]]

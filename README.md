@@ -28,7 +28,7 @@ and the runner user has no sudo. Rootless `podman` is included for building imag
 |---|---|---|
 | macOS | native (LaunchDaemon) | dotfiles `macos/setup_actions_runner.sh` |
 | Windows | native (Windows service) | dotfiles `windows/setup_actions_runner.ps1` |
-| Linux | Docker, one container per repository | `setup.sh` in this repository |
+| Linux | Docker, one or more containers per repository | `setup.sh` in this repository |
 
 ## Security: never register a runner on a public repository
 
@@ -63,7 +63,26 @@ Environment variables for `setup.sh`:
 | `RUNNER_HOST` | `hostname -s` | prefix of the runner name |
 | `RUNNER_IMAGE` | `ghcr.io/y-marui/actions-runner:latest` | image to run |
 | `RUNNER_CPUS` / `RUNNER_MEMORY` | unset | per-container limits, e.g. `2` / `4g` |
+| `RUNNER_REPLICAS` | `1` | containers per repository (see below) |
 | `RUNNER_PODMAN` | `0` | `1` enables building images in jobs (see below) and adds the label `linux-podman` |
+
+### More than one runner per repository
+
+A runner handles one job at a time, so a repository's concurrency equals the number of runners
+registered for it across all hosts. For a repository whose CI queues behind a few runners, raise
+`RUNNER_REPLICAS` on the main host:
+
+~~~sh
+RUNNER_REPLICAS=3 bash setup.sh install OWNER/REPO
+~~~
+
+The first container keeps the name `ar-<repo>`; the others are `ar-<repo>-2`, `ar-<repo>-3` (the
+runner names get the same suffix), each with its own volume. `install` skips containers that
+already exist, so raising the count on an installed repository only adds the new ones, and
+`status` and `uninstall` cover all replicas. `runner-ctl.sh` (see "Idle stop and on-demand start") stops idle containers, starts them when
+jobs queue up, and on the primary host can leave `ar-<repo>` running and manage only the extras.
+Avoid repository names that end in `-<number>` (`foo` with
+replicas and `foo-2` would share a container name).
 
 ## Building images in jobs (rootless podman)
 
@@ -104,20 +123,29 @@ A normal stop (`docker stop`) lets the runner close its session, so the new cont
 within seconds. After a crash or a kill, the runner may log "A session for this runner already
 exists" for a couple of minutes while GitHub expires the old session; it then reconnects on its own.
 
-## Idle stop and on-demand start (secondary hosts)
+## Idle stop and on-demand start
 
 Optional. When one always-on host and smaller hosts (such as Raspberry Pis) register the same
 repositories, GitHub gives a job to any idle runner with the label, so the small hosts take jobs
 at random and every container keeps a listener running. `runner-ctl.sh` keeps the small hosts
-quiet. Run it on the secondary hosts only; the primary host keeps its runners up.
+quiet. On the primary host, set `RUNNER_CTL_KEEP_PRIMARY=1`: the first container of each repository
+(`ar-<repo>`) stays up, and only the extra replicas (`ar-<repo>-2`, ... from `RUNNER_REPLICAS`) are
+stopped when idle and started when jobs queue up.
 
 - **Stop**: a running `ar-*` container with no job for `RUNNER_CTL_IDLE_MINUTES` is stopped with
   `docker stop -t 30`. Containers are never removed; the registration stays in the volume.
 - **Start**: a stopped container is started when a job for its repository that this host can run
   (labels `self-hosted`, `linux`, the architecture, `RUNNER_LABEL`) has been queued for at least
-  `RUNNER_CTL_START_DELAY` seconds, up to `RUNNER_CTL_MAX_RUNNING` running containers.
+  `RUNNER_CTL_START_DELAY` seconds, up to `RUNNER_CTL_MAX_RUNNING` running containers. One stopped
+  container is started per waiting job, so a single job does not wake every replica.
+- **Keepalive**: GitHub deletes the registration of a non-ephemeral runner that has not connected for
+  14 days. A container stopped for `RUNNER_CTL_KEEPALIVE_DAYS` (default 7) is started even with no
+  job, oldest first and within `RUNNER_CTL_MAX_RUNNING`; the idle stop then stops it again. The
+  last connection is taken from the container's last stop time (its creation time if it never ran),
+  so it needs no state file.
 - **Priority**: give each host a different `RUNNER_CTL_START_DELAY` (for example 60 and 120
-  seconds). The primary host takes a job at once; the host with the shorter delay is the next
+  seconds, or a few seconds on the primary host's extra replicas). A delay shorter than the timer
+  interval has no effect, because a start is only decided at a tick. The primary host takes a job at once; the host with the shorter delay is the next
   choice; the other starts a runner only if nobody took the job.
 
 It touches only the `ar-*` containers of the repositories you list, and checks the queue with
@@ -149,7 +177,9 @@ loginctl enable-linger "$USER"                    # keep the timer running witho
 | `RUNNER_CTL_TOKEN_FILE` | required | file with the token (mode 600) |
 | `RUNNER_CTL_IDLE_MINUTES` | `15` | stop a runner after this many idle minutes |
 | `RUNNER_CTL_START_DELAY` | `60` | start a runner for a job queued at least this many seconds |
-| `RUNNER_CTL_MAX_RUNNING` | `4` | upper bound on running containers |
+| `RUNNER_CTL_MAX_RUNNING` | `4` | upper bound on running containers that this script manages |
+| `RUNNER_CTL_KEEPALIVE_DAYS` | `7` | start a container stopped this long even with no job (`0` disables) |
+| `RUNNER_CTL_KEEP_PRIMARY` | `0` | `1` leaves `ar-<repo>` (the first container) alone; for the primary host |
 | `RUNNER_CTL_STATE_DIR` | `~/.local/state/runner-ctl` | state and API cache |
 | `RUNNER_LABEL` | `linux-sh` | the label of this host's runners (as for `setup.sh`) |
 
@@ -163,7 +193,19 @@ a crash or a kill).
 bash setup.sh uninstall OWNER/REPO
 ~~~
 
-This deregisters the runner from GitHub, stops and removes the container, and deletes its volume.
+This deregisters the runners from GitHub (every replica, starting a stopped container first), stops
+and removes the containers, and deletes their volumes. To drop only the extra replicas of a
+repository, deregister each one by hand and keep `ar-<repo>`:
+
+~~~sh
+token=$(gh api -X POST repos/OWNER/REPO/actions/runners/remove-token --jq .token)
+docker start ar-<repo>-2 && sleep 3
+docker exec ar-<repo>-2 ./config.sh remove --token "$token"
+docker stop -t 30 ar-<repo>-2 && docker rm ar-<repo>-2 && docker volume rm ar-<repo>-2
+~~~
+
+If you only stop `runner-ctl` instead, the stopped extras are harmless; GitHub deletes their
+registration after 14 days.
 
 ## Publishing
 

@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `runner-ctl.sh` keepalive (`RUNNER_CTL_KEEPALIVE_DAYS`, default 7): starts a container that has been
+  stopped for that long so GitHub does not delete its registration after 14 days without a connection.
+  `setup.sh uninstall` now starts a stopped container before deregistering it.
+- `runner-ctl.sh` handles replicas (`ar-<repo>-N`), starts one per waiting job, and with
+  `RUNNER_CTL_KEEP_PRIMARY=1` runs on the primary host, managing only the extra replicas.
+- `RUNNER_REPLICAS` for `setup.sh`: run several runner containers per repository (`ar-<repo>`,
+  `ar-<repo>-2`, ...) to raise a heavy repository's concurrency on the main host.
 - `runner-ctl.sh` for secondary hosts: stops runner containers that have been idle and starts
   stopped ones when a job has been queued, with a per-host start delay as priority and a cap on
   running containers. systemd units and a settings example are in `systemd/`.
