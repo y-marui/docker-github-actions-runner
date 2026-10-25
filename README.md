@@ -18,9 +18,19 @@ ghcr.io/y-marui/actions-runner:latest
 ~~~
 
 The image is Ubuntu 26.04 with the runner, `git`, `gh`, `curl`, `jq`, `zip`, python (`pip`, `uv`),
-node, `shellcheck`, `gitleaks`, `swiftlint`, and the shared libraries Qt tests load. It contains
+node, `shellcheck`, `gitleaks`, `swiftlint`, and the shared libraries Qt and headless Chromium tests load. It contains
 no secrets: the registration token is passed at run time. It does not mount the Docker socket,
 and the runner user has no sudo. Rootless `podman` is included for building images in jobs.
+
+## Headless Chromium tests
+
+The image preinstalls Chromium shared libraries and Liberation fonts so browser jobs need no
+sudo. It does not bundle a browser or Playwright. After selecting the project's Node.js version
+and installing its locked dependencies, run `npx playwright install chromium`, then the tests.
+This downloads the browser version matching that project's Playwright dependency.
+Use runner architecture labels to keep large browser downloads off storage-constrained hosts.
+When recreating a container, use an image with these libraries and verify a real browser test
+as the non-root runner user; changes made inside an old container do not survive recreation.
 
 ## Runners per OS
 
