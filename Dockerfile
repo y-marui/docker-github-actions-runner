@@ -21,7 +21,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # which makes `pip install` (e.g. pre-commit/action) fail for the non-root runner user.
 # PATH: `pip install` as that user puts executables (pre-commit) in ~/.local/bin.
 # Tools used by the CI jobs: git/gh/curl/jq/zip, python (pre-commit hooks), node,
-# shellcheck, and the shared libraries Qt/PySide6 tests load (GitHub-hosted images preinstall them).
+# shellcheck, and the shared libraries Qt/PySide6 and headless Chromium tests load.
+# Browsers stay out of the image: jobs install the version pinned by their Playwright lockfile.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates curl git gnupg jq unzip zip perl build-essential \
@@ -29,6 +30,9 @@ RUN apt-get update \
       libglib2.0-0t64 libgl1 libopengl0 libfontconfig1 libfreetype6 libdbus-1-3 \
       libxkbcommon-x11-0 libx11-6 libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
       libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxrender1 libxi6 libsm6 libice6 \
+      libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 libcups2t64 \
+      libdrm2 libgbm1 libnspr4 libnss3 libpango-1.0-0 libxcomposite1 libxdamage1 \
+      libxext6 libxfixes3 libxrandr2 fonts-liberation \
       libicu78 libssl3t64 \
  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       -o /usr/share/keyrings/githubcli-archive-keyring.gpg \

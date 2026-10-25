@@ -15,7 +15,13 @@ Linux の self-hosted GitHub Actions runner を Docker イメージとして提�
 ghcr.io/y-marui/actions-runner:latest
 ~~~
 
-イメージは Ubuntu 26.04 に runner、`git`、`gh`、`curl`、`jq`、`zip`、python(`pip`、`uv`)、node、`shellcheck`、`gitleaks`、`swiftlint`、Qt テストが読み込む共有ライブラリを加えたもの。秘密情報は含まず、登録トークンは実行時に渡す。Docker ソケットはマウントせず、runner ユーザーは sudo を使えない。ジョブ内でイメージをビルドするための rootless `podman` を含む。
+イメージは Ubuntu 26.04 に runner、`git`、`gh`、`curl`、`jq`、`zip`、python(`pip`、`uv`)、node、`shellcheck`、`gitleaks`、`swiftlint`、Qt と headless Chromium のテストが読み込む共有ライブラリを加えたもの。秘密情報は含まず、登録トークンは実行時に渡す。Docker ソケットはマウントせず、runner ユーザーは sudo を使えない。ジョブ内でイメージをビルドするための rootless `podman` を含む。
+
+## Headless Chromium tests
+
+Chromiumの共有ライブラリとLiberationフォントをイメージに事前導入し、ブラウザのジョブではsudoを使わない。ブラウザ本体とPlaywrightは含めない。プロジェクトのNode.jsとロック済み依存を準備してから、`npx playwright install chromium`でそのPlaywrightに対応するブラウザを取得し、テストする。小容量ホストに大きなブラウザを取得させない場合は、runnerのアーキテクチャラベルで対象を絞る。
+
+コンテナを再作成するときは、これらのライブラリを含むイメージを使い、非rootのrunnerユーザーで実際のブラウザテストを確認する。古いコンテナ内に直接導入したパッケージは、再作成すると消える。
 
 ## Runners per OS
 
