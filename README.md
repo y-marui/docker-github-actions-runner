@@ -22,6 +22,11 @@ node, `shellcheck`, `gitleaks`, `swiftlint`, and the shared libraries Qt and hea
 no secrets: the registration token is passed at run time. It does not mount the Docker socket,
 and the runner user has no sudo. Rootless `podman` is included for building images in jobs.
 
+SwiftLint includes the libxml2 ABI and ICU libraries from its official image because Ubuntu 26.04
+uses a newer libxml2 ABI. CI smoke-tests the exported image as the runner user. Publication first
+pushes a candidate, verifies SwiftLint and shared libraries natively on amd64 and arm64, then
+promotes the verified manifest to `latest` and the runner-version tag.
+
 ## Headless Chromium tests
 
 The image preinstalls Chromium shared libraries and Liberation fonts so browser jobs need no

@@ -3,17 +3,25 @@ name: Publish
 on:
   push:
     branches: [main]
-    paths: [Dockerfile, entrypoint.sh, "podman/**", .github/workflows/publish.yml]
+    paths: [Dockerfile, entrypoint.sh, "podman/**", tests/image-smoke.sh, .github/workflows/publish.yml]
   schedule:
     # Weekly rebuild to pick up Ubuntu / apt security updates.
     - cron: "0 3 * * 1"
   workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 env:
   IMAGE: ghcr.io/y-marui/actions-runner
 
 jobs:
   image:
+    timeout-minutes: 30
+    outputs:
+      runner: ${{ steps.ver.outputs.runner }}
+      digest: ${{ steps.build.outputs.digest }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,12 +44,52 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v7
+        id: build
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.IMAGE }}:latest
-            ${{ env.IMAGE }}:${{ steps.ver.outputs.runner }}
+          tags: ${{ env.IMAGE }}:candidate-${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  verify:
+    needs: image
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify the published candidate on its native architecture
+        env:
+          CANDIDATE: ${{ env.IMAGE }}@${{ needs.image.outputs.digest }}
+        run: docker run --rm --network none --entrypoint bash -v "$PWD/tests/image-smoke.sh:/tmp/image-smoke.sh:ro" "$CANDIDATE" /tmp/image-smoke.sh
+
+  promote:
+    needs: [image, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote the verified manifest
+        env:
+          CANDIDATE: ${{ env.IMAGE }}@${{ needs.image.outputs.digest }}
+          VERSION: ${{ needs.image.outputs.runner }}
+        run: docker buildx imagetools create --prefer-index=false -t "$IMAGE:latest" -t "$IMAGE:$VERSION" "$CANDIDATE"

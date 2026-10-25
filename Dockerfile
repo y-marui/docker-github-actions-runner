@@ -5,6 +5,10 @@
 ARG SWIFTLINT_VERSION=0.65.1
 FROM ghcr.io/realm/swiftlint:${SWIFTLINT_VERSION} AS swiftlint
 
+# SwiftLint still links the Ubuntu 24.04 libxml2 ABI and its ICU dependencies.
+RUN mkdir /swiftlint-compat \
+ && cp -L /usr/lib/*/libxml2.so.2 /usr/lib/*/libicuuc.so.74 /usr/lib/*/libicudata.so.74 /swiftlint-compat/
+
 FROM ubuntu:26.04
 
 ARG TARGETARCH
@@ -54,9 +58,10 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
       | tar -xz -C /usr/local/bin gitleaks
 
 # SwiftLint needs the Swift runtime libraries (e.g. libsourcekitdInProc.so); take the binary and
-# the libraries from the official image (same Ubuntu base), so the lint job does not need docker.
+# the libraries from the official image, including its older libxml2 ABI.
 COPY --from=swiftlint /usr/bin/swiftlint /usr/local/bin/swiftlint
 COPY --from=swiftlint /usr/lib/*.so /usr/local/lib/swiftlint/
+COPY --from=swiftlint /swiftlint-compat/ /usr/local/lib/swiftlint/
 RUN echo /usr/local/lib/swiftlint > /etc/ld.so.conf.d/swiftlint.conf && ldconfig
 ENV LINUX_SOURCEKIT_LIB_PATH=/usr/local/lib/swiftlint
 

@@ -31,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Bundle SwiftLint's libxml2/ICU compatibility libraries on Ubuntu 26.04. Verify exported images
+  and both native architectures before promoting published tags.
+
 - `docker stop` now stops the runner gracefully (about 1 s, exit code 0) instead of waiting for the
   timeout and killing it (31 s, exit code 137). A killed runner left its session on GitHub, so a
   restart waited about two minutes ("A session for this runner already exists"); after a graceful
