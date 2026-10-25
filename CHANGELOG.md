@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `pythonLocation` is derived from the OS release, Python version and architecture at start, so
+  `pre-commit/action` no longer restores a `~/.cache/pre-commit` saved by an older image (its
+  virtualenvs failed with `libpython3.14.so.1.0: cannot open shared object file`).
+
 ### Added
 
 - Shared libraries and Liberation fonts for headless Chromium tests, allowing jobs to install
