@@ -30,6 +30,9 @@ CI builds the image for linux/amd64 on pull requests that touch the image. The m
   the workspace path, and git matches the resolved path, so a symlinked workspace fails to fetch. Do not copy the runner into the
   volume again (~450 MB per runner). The registration token is needed only for the first start
   and is never written to a file.
+- `entrypoint.sh` sets `pythonLocation` from the OS release, Python version and architecture.
+  `pre-commit/action` keys its cache on it, and without it a `~/.cache/pre-commit` saved by an older
+  image is restored into a newer one. Keep it changing whenever the image's Python changes.
 - `setup.sh` refuses public repositories. Keep that check.
 - No comments that restate what the code does; comments explain non-obvious *why* only (see
   [docs/dev-charter/CODE_STYLE.md](docs/dev-charter/CODE_STYLE.md)).
