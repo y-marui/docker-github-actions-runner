@@ -84,7 +84,9 @@ RUN case "${TARGETARCH}" in amd64) RA=x64;; arm64) RA=arm64;; esac \
  && chown -R runner:runner /opt/runner
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod 755 /usr/local/bin/entrypoint.sh
+COPY hooks/job-started.sh /usr/local/lib/runner-hooks/job-started.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/lib/runner-hooks/job-started.sh
+ENV ACTIONS_RUNNER_HOOK_JOB_STARTED=/usr/local/lib/runner-hooks/job-started.sh
 
 USER runner
 WORKDIR /opt/runner

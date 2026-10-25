@@ -70,19 +70,6 @@ if [[ ! -f "${RUNNER_DIR}/.runner" ]]; then
   link_state
 fi
 
-# pre-commit/action keys its actions/cache entry on $pythonLocation, which only actions/setup-python
-# sets. Unset here, the key carries no environment identity, so a ~/.cache/pre-commit saved by an
-# older image (virtualenvs whose python needs a libpython this image lacks) is restored and every
-# hook install fails. Derive it from the OS release, Python version and architecture so an image
-# upgrade starts a fresh cache.
-if [[ -z "${pythonLocation:-}" ]]; then
-  # shellcheck disable=SC1091
-  os_release="$(. /etc/os-release && echo "${ID}${VERSION_ID}")"
-  py_version="$(python3 -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
-  arch="$(dpkg --print-architecture)"
-  export pythonLocation="/usr-${os_release}-py${py_version}-${arch}"
-fi
-
 # run.sh does not pass SIGTERM on to the listener, so `docker stop` would wait for its timeout and
 # then SIGKILL it, leaving the runner's session on GitHub (the next start waits for it to expire).
 # Run it as a child and signal the listener directly. No deregistration on stop.
