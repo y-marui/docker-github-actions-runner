@@ -8,9 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- `pythonLocation` is derived from the OS release, Python version and architecture at start, so
+- A job-started hook writes `pythonLocation` (OS release, Python version, architecture) to `GITHUB_ENV`, so
   `pre-commit/action` no longer restores a `~/.cache/pre-commit` saved by an older image (its
-  virtualenvs failed with `libpython3.14.so.1.0: cannot open shared object file`).
+  virtualenvs failed with `libpython3.14.so.1.0: cannot open shared object file`). Replaces the
+  `entrypoint.sh` export, which `${{ env.pythonLocation }}` never saw.
 
 ### Added
 
