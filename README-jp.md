@@ -16,6 +16,11 @@ ghcr.io/y-marui/actions-runner:latest
 ~~~
 
 イメージは Ubuntu 26.04 に runner、`git`、`gh`、`curl`、`jq`、`zip`、python(`pip`、`uv`)、node、`shellcheck`、`gitleaks`、`swiftlint`、Qt と headless Chromium のテストが読み込む共有ライブラリを加えたもの。秘密情報は含まず、登録トークンは実行時に渡す。Docker ソケットはマウントせず、runner ユーザーは sudo を使えない。ジョブ内でイメージをビルドするための rootless `podman` を含む。
+SwiftLintはUbuntu 26.04と異なるlibxml2 ABIを使うため、公式イメージのlibxml2とICUを同梱します。
+CIでは書き出したイメージをrunnerユーザーで検証します。公開時は候補イメージを先にpushし、
+amd64・arm64のネイティブ環境でSwiftLintと共有ライブラリを検証してから、
+検証済みmanifestを`latest`とrunnerバージョンのタグへ昇格させます。
+
 
 ## Headless Chromium tests
 

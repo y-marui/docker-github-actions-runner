@@ -35,6 +35,7 @@ jobs:
               - 'entrypoint.sh'
               - 'podman/**'
               - 'setup.sh'
+              - 'tests/image-smoke.sh'
               - '.github/workflows/ci.yml'
               - '.github/workflows/publish.yml'
 
@@ -65,8 +66,13 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          tags: actions-runner:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify the exported image as the runner user
+        run: docker run --rm --network none --entrypoint bash -v "$PWD/tests/image-smoke.sh:/tmp/image-smoke.sh:ro" actions-runner:ci /tmp/image-smoke.sh
 
   test:
     name: Shell tests
