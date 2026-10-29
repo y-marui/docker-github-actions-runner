@@ -20,7 +20,8 @@ ghcr.io/y-marui/actions-runner:latest
 The image is Ubuntu 26.04 with the runner, `git`, `gh`, `curl`, `jq`, `zip`, python (`pip`, `uv`),
 node, `shellcheck`, `gitleaks`, `swiftlint`, and the shared libraries Qt and headless Chromium tests load. It contains
 no secrets: the registration token is passed at run time. It does not mount the Docker socket,
-and the runner user has no sudo. Rootless `podman` is included for building images in jobs.
+and the runner user has no sudo. `uv` interpreters are stored in the shared `ar-cache` volume
+(`UV_PYTHON_INSTALL_DIR=/runner/.cache/uv-python`). Rootless `podman` is included for building images in jobs.
 
 SwiftLint includes the libxml2 ABI and ICU libraries from its official image because Ubuntu 26.04
 uses a newer libxml2 ABI. CI smoke-tests the exported image as the runner user. Publication first

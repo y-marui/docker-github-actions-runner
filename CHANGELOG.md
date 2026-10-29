@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   virtualenvs failed with `libpython3.14.so.1.0: cannot open shared object file`). Replaces the
   `entrypoint.sh` export, which `${{ env.pythonLocation }}` never saw.
 
+### Changed
+
+- `UV_PYTHON_INSTALL_DIR=/runner/.cache/uv-python`: interpreters fetched by `uv python install` now live in
+  the shared `ar-cache` volume, so containers on a host share one copy that survives recreation
+  (previously ~310 MB per container, lost on recreation). Fetching Python 3.11-3.14 took 6.6 s, now 1.1 s once cached.
+
 ### Added
 
 - Shared libraries and Liberation fonts for headless Chromium tests, allowing jobs to install

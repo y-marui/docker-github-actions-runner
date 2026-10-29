@@ -18,11 +18,14 @@ ARG GITLEAKS_VERSION=8.30.1
 ENV DEBIAN_FRONTEND=noninteractive \
     RUNNER_TOOL_CACHE=/runner/.cache/toolcache \
     AGENT_TOOLSDIRECTORY=/runner/.cache/toolcache \
+    UV_PYTHON_INSTALL_DIR=/runner/.cache/uv-python \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
     PATH=/runner/.local/bin:${PATH}
 
 # PIP_BREAK_SYSTEM_PACKAGES: Ubuntu 26.04 marks system python as externally managed (PEP 668),
 # which makes `pip install` (e.g. pre-commit/action) fail for the non-root runner user.
+# UV_PYTHON_INSTALL_DIR: keeps the interpreters `uv python install` downloads (~310 MB for 3.11-3.14)
+# in the shared cache volume instead of a per-container copy in the writable layer.
 # PATH: `pip install` as that user puts executables (pre-commit) in ~/.local/bin.
 # Tools used by the CI jobs: git/gh/curl/jq/zip, python (pre-commit hooks), node,
 # shellcheck, and the shared libraries Qt/PySide6 and headless Chromium tests load.
