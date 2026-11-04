@@ -9,6 +9,16 @@ Read as needed:
 - `CONTRIBUTING.md` (PR/Issue rules)
 - `docs/dev-charter/CHARTER_INDEX.md` (find the relevant charter topic, then read only that file)
 
+### Charter Lookup
+
+If a question relates to the charter, do **not** search every file; follow these steps:
+
+1. Read `docs/dev-charter/CHARTER_INDEX.md` and identify the relevant topic file
+2. Read only the identified file(s) (normally 1-2)
+3. Propose or confirm with the user after consulting it
+
+Do not guess; consult the charter before proposing or asking.
+
 ## Project Overview
 
 Docker image for a Linux self-hosted GitHub Actions runner, and `setup.sh`, which registers
