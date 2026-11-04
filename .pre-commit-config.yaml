@@ -213,6 +213,23 @@ repos:
         always_run: true
 
   # ----------------------------------------------------------------
+  # UPDATE_CHECKLIST sign check (pre-push only)
+  # (a diff that only touches the dev-charter subtree must carry a
+  # `Update-Checklist: done` trailer commit, or also change a file outside
+  # the subtree. Not run at commit time: `git subtree pull` commits only
+  # touch the subtree. Needs `pre-commit install --hook-type pre-push`)
+  # ----------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: check-update-checklist
+        name: Check UPDATE_CHECKLIST was run
+        language: script
+        entry: scripts/check-update-checklist.sh
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+
+  # ----------------------------------------------------------------
   # Charter doc links (adopting repos only)
   # (docs/dev-charter/... paths mentioned in this repo's own Markdown
   # must actually resolve — catches referencing a not-yet-synced path)
