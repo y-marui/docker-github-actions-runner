@@ -53,7 +53,7 @@ repository, a pull request from a fork can run arbitrary code on your machine. `
 refuses public repositories. Register runners only on private repositories whose workflows only
 you can edit.
 
-## Adding a host
+## Setup: adding a host
 
 Requirements: Docker, and `gh` authenticated with admin access to the repositories.
 
@@ -99,6 +99,18 @@ already exist, so raising the count on an installed repository only adds the new
 jobs queue up, and on the primary host can leave `ar-<repo>` running and manage only the extras.
 Avoid repository names that end in `-<number>` (`foo` with
 replicas and `foo-2` would share a container name).
+
+## Usage
+
+Once a runner is registered, select it in a workflow with `runs-on: [self-hosted, linux-sh]`
+(add `linux-podman` for runners installed with `RUNNER_PODMAN=1`). Manage the runners of a host
+with `setup.sh`:
+
+~~~sh
+bash setup.sh status OWNER/REPO...       # state of the runners
+bash setup.sh pull                       # fetch the latest image (see "Updating the image on a host")
+bash setup.sh uninstall OWNER/REPO       # see "Removing a runner"
+~~~
 
 ## Building images in jobs (rootless podman)
 
