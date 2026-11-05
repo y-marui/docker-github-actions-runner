@@ -1,7 +1,7 @@
 # docker-github-actions-runner
 
-> **このファイルは正本(日本語版)です。**
-> 英語版(参照)は [README.md](README.md) を参照してください。
+> **このファイルは正本（日本語版）です。**
+> 英語版（参照）は [README.md](README.md) を参照してください。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI](https://github.com/y-marui/docker-github-actions-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/y-marui/docker-github-actions-runner/actions/workflows/ci.yml)
