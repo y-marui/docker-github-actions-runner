@@ -40,7 +40,7 @@ Chromiumの共有ライブラリとLiberationフォントをイメージに事�
 
 self-hosted runner は、リポジトリのワークフローに書かれたコードをそのまま実行する。public リポジトリでは、fork からの PR が手元のマシンで任意のコードを実行できてしまう。`setup.sh install` は public リポジトリを拒否する。runner は、自分だけがワークフローを編集できる private リポジトリにだけ登録する。
 
-## Adding a host
+## Setup: adding a host
 
 必要なもの: Docker と、対象リポジトリの管理者権限で認証済みの `gh`。
 
@@ -74,6 +74,17 @@ RUNNER_REPLICAS=3 bash setup.sh install OWNER/REPO
 ~~~
 
 1 つ目のコンテナは従来どおり `ar-<repo>`、2 つ目以降は `ar-<repo>-2`、`ar-<repo>-3`（runner 名も同じ接尾辞）で、volume は別々になる。`install` は既にあるコンテナをスキップするので、導入済みのリポジトリで数を増やすと、足りない分だけ追加される。`status` と `uninstall` は全レプリカが対象。`runner-ctl.sh`(下記 "Idle stop and on-demand start")は、アイドルのコンテナを止め、ジョブが溜まったときに起動する。主ホストでは `ar-<repo>` を常時起動のままにして、追加レプリカだけを管理させることもできる。末尾が `-<数字>` のリポジトリ名（`foo` をレプリカ付きにすると `foo-2` と名前が衝突する）は避ける。
+
+## Usage
+
+runner を登録したら、workflow では `runs-on: [self-hosted, linux-sh]` で選択する
+(`RUNNER_PODMAN=1` で導入した runner には `linux-podman` を加える)。ホスト上の runner は `setup.sh` で管理する。
+
+~~~sh
+bash setup.sh status OWNER/REPO...       # runner の状態
+bash setup.sh pull                       # 最新のイメージを取得する("Updating the image on a host" を参照)
+bash setup.sh uninstall OWNER/REPO       # "Removing a runner" を参照
+~~~
 
 ## Building images in jobs (rootless podman)
 
